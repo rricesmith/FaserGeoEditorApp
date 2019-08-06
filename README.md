@@ -11,3 +11,6 @@ After following calypso readme to build all files:
 cd ../run
 source ./setup.sh
 bin/qtTest data/geomDB_sqlite
+
+Adding rows/columns adds one after the selected index (if none selected inputs new one at beginning)
+Changes to table are only saved if submitted
