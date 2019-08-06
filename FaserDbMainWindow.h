@@ -37,7 +37,8 @@ private:
     FaserDbSecondWindow *m_secondWindow;
     void createActions();
     void createStatusBar();
-    void rebuildTree();
+    void setTable();
+    QSqlTableModel *m_hvsNodeTableModel;
 
     QMenu *m_viewMenu;
 
@@ -51,6 +52,8 @@ public:
 //    void submit();
     QSqlDatabase returnDatabase();
     void showAll();
+    void rebuildTree();
+    QString selectedRowName();
 
 
     // virtual ~FaserDbMainWindow();
@@ -72,14 +75,17 @@ private:
     FaserDbMainWindow *m_parentWindow;
     QTableView *m_tableView;
 
+    void initializeWindow();
+
 public:
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
     void submit();
-    QSqlTableModel* tablePointer();
+//    QSqlTableModel* tablePointer();
     void addRow();
     void addColumn();
     void removeColumn();
     void removeRow();
+    void setTable();
 
 };
 

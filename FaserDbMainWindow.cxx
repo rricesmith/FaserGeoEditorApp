@@ -76,12 +76,14 @@ QList<QStandardItem*> FaserDbMainWindow::prepareRow(const QString& name, const Q
 void FaserDbMainWindow::setDatabase( QSqlDatabase *db)
 {
     m_database = *db;
+    m_hvsNodeTableModel = new QSqlTableModel(nullptr, m_database);
+    m_hvsNodeTableModel->setTable("HVS_NODE");
+    m_hvsNodeTableModel->select();
     return;
 }
 
 void FaserDbMainWindow::initializeWindow()
 {
-
     QDockWidget *secondWid = new QDockWidget(tr("Data"), this);
     secondWid->setAllowedAreas(Qt::RightDockWidgetArea);
 
@@ -98,9 +100,9 @@ void FaserDbMainWindow::initializeWindow()
     createActions();
     createStatusBar();
 
-
-
-    QSqlTableModel *model = m_secondWindow->tablePointer();
+//    connect( m_treeView, &FaserDbMainWindow::doubleClicked, this,  &FaserDbMainWindow::setTable);
+    QSqlTableModel *model = m_hvsNodeTableModel;
+//    QSqlTableModel *model = m_secondWindow->tablePointer();
 /*    m_model = new QSqlTableModel(nullptr, m_database);
     m_model->setTable("HVS_NODE");
     m_model->setEditStrategy(QSqlTableModel::OnManualSubmit);
@@ -170,6 +172,11 @@ void FaserDbMainWindow::initializeWindow()
     return;
 }
 
+void FaserDbMainWindow::setTable()
+{
+    m_secondWindow->setTable();
+}
+
 void FaserDbMainWindow::createActions()
 {
     QMenu *fileMenu = menuBar()->addMenu(tr("&Menu"));
@@ -188,12 +195,20 @@ void FaserDbMainWindow::createActions()
 
 }
 
+QString FaserDbMainWindow::selectedRowName()
+{
+    int row = m_treeView->currentIndex().row();
+    return m_treeView->model()->data( m_treeView->model()->index(row, 1)).toString();
+}
+
 void FaserDbMainWindow::rebuildTree()
 {
     m_standardModel->clear();
     QStandardItem* root = m_standardModel->invisibleRootItem();
 
-    QSqlTableModel *model = m_secondWindow->tablePointer();
+    m_hvsNodeTableModel->select();
+    QSqlTableModel *model = m_hvsNodeTableModel;
+//    QSqlTableModel *model = m_secondWindow->tablePointer();
     
     for(int i = 1; i < model->rowCount(); i++)
     {
@@ -225,8 +240,9 @@ void FaserDbMainWindow::createStatusBar()
 }
 
 void FaserDbMainWindow::buildChildren( QList<QStandardItem*> *PRow, QString parent_id)
-{
-    QSqlTableModel *model = m_secondWindow->tablePointer();
+{   
+    QSqlTableModel *model = m_hvsNodeTableModel;
+//    QSqlTableModel *model = m_secondWindow->tablePointer();
     for(int i = 1; i < model->rowCount(); i++)
     {
         if(model->record(i).value("PARENT_ID").toString() == parent_id)
@@ -280,6 +296,7 @@ void FaserDbSecondWindow::submit()
     if(m_tableModel->submitAll())
     {
         m_tableModel->database().commit();
+        m_parentWindow->rebuildTree();
     }
     else
     {
@@ -291,12 +308,19 @@ void FaserDbSecondWindow::submit()
 
 void FaserDbSecondWindow::addRow()
 {
-    m_tableModel->insertRows(m_tableView->selectionModel()->currentIndex().row() + 1, 1);
+    if(!m_tableModel->insertRows(m_tableView->selectionModel()->currentIndex().row() + 1, 1))
+    {
+        //This executes only if there was no valid index, and then puts a new row at beginning
+        m_tableModel->insertRows(0, 1);
+    }
 }
 
 void FaserDbSecondWindow::addColumn()
 {
-    m_tableModel->insertColumn(m_tableView->selectionModel()->currentIndex().column() + 1);
+    if(!m_tableModel->insertColumn(m_tableView->selectionModel()->currentIndex().column() + 1))
+    {
+        m_tableModel->insertColumn(0);
+    }
 }
 
 void FaserDbSecondWindow::removeColumn()
@@ -368,9 +392,21 @@ FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidg
     return;
 }
 
+/*
 QSqlTableModel* FaserDbSecondWindow::tablePointer()
 {
     return m_tableModel;
+}*/
+
+void FaserDbSecondWindow::setTable()
+{
+    //Check if table is a _DATA or _DATA2TAG table
+//    if( m_parentWindow->)
+}
+
+void FaserDbSecondWindow::initializeWindow()
+{
+
 }
 
 
