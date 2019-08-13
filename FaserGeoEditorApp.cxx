@@ -21,6 +21,6 @@ FaserGeoEditorApp::FaserGeoEditorApp(int& argc, char** argv)
 
 int FaserGeoEditorApp::exec()
 {
-    m_mainWindow.showAll();
+    m_mainWindow.show();
     return m_application.exec();
 }

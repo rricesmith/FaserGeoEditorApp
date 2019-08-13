@@ -10,6 +10,9 @@
 #include <QSqlRecord>
 #include <QtWidgets>
 #include <QtSql>
+#include <QVariant>
+#include <QSqlField>
+
 using namespace std;
 
 FaserDbMainWindow::FaserDbMainWindow(QWidget* parent)
@@ -84,15 +87,26 @@ void FaserDbMainWindow::setDatabase( QSqlDatabase *db)
 
 void FaserDbMainWindow::initializeWindow()
 {
+    //Build second window
     QDockWidget *secondWid = new QDockWidget(tr("Data"), this);
     secondWid->setAllowedAreas(Qt::RightDockWidgetArea);
-
-
     m_secondWindow = new FaserDbSecondWindow(this, secondWid);
-    setCentralWidget(m_treeView);
-
     secondWid->setWidget(m_secondWindow);
     addDockWidget(Qt::RightDockWidgetArea, secondWid);
+
+    setCentralWidget(m_treeView);
+
+    //This code sets the right click menu for the tree
+    m_contextMenu = new QMenu(m_treeView);
+    m_treeView->setContextMenuPolicy(Qt::ActionsContextMenu);
+//    connect(m_treeView, &QWidget::customContextMenuRequested, this, &FaserDbMainWindow::contextMenu);
+    m_addBranch = new QAction("Add Branch", m_contextMenu);
+    m_addLeaf = new QAction("Add Leaf", m_contextMenu);
+    m_treeView->addAction(m_addBranch);
+    m_treeView->addAction(m_addLeaf);
+    connect(m_addBranch, &QAction::triggered, this, &FaserDbMainWindow::addBranch);
+    connect(m_addLeaf, &QAction::triggered, this, &FaserDbMainWindow::addLeaf);
+
 
     QStandardItem* root = m_standardModel->invisibleRootItem();
 
@@ -100,7 +114,9 @@ void FaserDbMainWindow::initializeWindow()
     createActions();
     createStatusBar();
 
-//    connect( m_treeView, &FaserDbMainWindow::doubleClicked, this,  &FaserDbMainWindow::setTable);
+/*    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    connect(m_treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &FaserDbMainWindow::selectionChanged);*/
     QSqlTableModel *model = m_hvsNodeTableModel;
 //    QSqlTableModel *model = m_secondWindow->tablePointer();
 /*    m_model = new QSqlTableModel(nullptr, m_database);
@@ -169,12 +185,33 @@ void FaserDbMainWindow::initializeWindow()
     m_treeView->resizeColumnToContents(3);
     m_treeView->resizeColumnToContents(4);
 
+//    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
+    connect(m_treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &FaserDbMainWindow::selectionChanged);
+
     return;
 }
 
-void FaserDbMainWindow::setTable()
-{
-    m_secondWindow->setTable();
+void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
+{   
+    if(!selected.isEmpty())
+    {
+        m_currentSelected = selected.indexes().at(1).data(0).toString();
+    }
+    if(!selected.isEmpty() && (selected.indexes().at(1).data(0).toString().endsWith("_DATA") || selected.indexes().at(1).data(0).toString().endsWith("_DATA2TAG")))
+    {
+        m_secondWindow->hide();
+        m_secondWindow->clearWindow();
+        m_secondWindow->setWindow(selected.indexes().at(1).data(0).toString());
+        m_secondWindow->show();
+/*        for(int i = 0; i < 4; i++) at(i), i gives column num, data(j), j idk
+        {
+            string changedindex = selected.indexes().at(1).data(i).toString().toStdString();
+            cout<<changedindex<<endl;
+        }*/
+    }
+    if(deselected.isEmpty())
+    {}
 }
 
 void FaserDbMainWindow::createActions()
@@ -197,8 +234,9 @@ void FaserDbMainWindow::createActions()
 
 QString FaserDbMainWindow::selectedRowName()
 {
-    int row = m_treeView->currentIndex().row();
-    return m_treeView->model()->data( m_treeView->model()->index(row, 1)).toString();
+//    int row = m_treeView->currentIndex().row();
+//    return m_treeView->model()->data( m_treeView->model()->index(row, 1)).toString();
+    return m_currentSelected;
 }
 
 void FaserDbMainWindow::rebuildTree()
@@ -283,12 +321,167 @@ QSqlDatabase FaserDbMainWindow::returnDatabase()
     return m_database;
 }
 
-void FaserDbMainWindow::showAll()
+/*old popup
+string FaserDbMainWindow::obtainNamePopup()
 {
-    show();
-    m_secondWindow->show();
-    return;
+    FaserDbPopup newpopup(this);
+    return "test";
+}*/
+
+void FaserDbMainWindow::addBranch()
+{
+    //Ensures you can't add branch to a leaf
+    if( selectedRowName().endsWith("_DATA") || selectedRowName().endsWith("_DATA2TAG"))
+    {
+        cout<<"Cannot add branch to a non-hvs row\n";
+        return;
+    }
+    int modelRow = 0;
+    while( m_hvsNodeTableModel->record(modelRow).value("NODE_NAME") != selectedRowName())
+    {
+        modelRow++;
+    }
+    if(m_hvsNodeTableModel->record(modelRow).value("BRANCH_FLAG").toInt() == 0)
+    {
+        cout<<"Cannot add branch to a leaf node\n";
+        return;
+    }
+
+
+    bool ok;
+    QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Table Name"), QLineEdit::Normal, QDir::home().dirName(),&ok);
+ 
+    int pint = m_hvsNodeTableModel->record(modelRow).value("NODE_ID").toInt();
+    pint = pint * 10;
+    int i = 0;
+    while( i < m_hvsNodeTableModel->rowCount())
+    {  
+        if(pint == m_hvsNodeTableModel->record(i).value("NODE_ID").toInt())
+        {
+            pint++;
+            i = -1;
+        }
+        i++;
+    }
+
+    int row = m_hvsNodeTableModel->rowCount();
+
+    if( ok && !text.isEmpty())
+    {   
+
+        m_hvsNodeTableModel->insertRow( row);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 0), pint);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 1), text);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 2), m_hvsNodeTableModel->record(modelRow).value("NODE_ID"));
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 3), 1);        
+        
+        m_hvsNodeTableModel->database().transaction();
+        m_hvsNodeTableModel->submitAll();
+
+        rebuildTree();
+    }
+    else
+    {
+        cout<<"Need valid table name\n";
+    }
+    
 }
+
+void FaserDbMainWindow::addLeaf()
+{
+    //First ensure we are adding to a proper leaf node
+    if( selectedRowName().endsWith("_DATA") || selectedRowName().endsWith("_DATA2TAG"))
+    {
+        cout<<"Cannot add leaf to a non-hvs row\n";
+        return;
+    }
+    int modelRow = 0;
+    while( m_hvsNodeTableModel->record(modelRow).value("NODE_NAME") != selectedRowName())
+    {
+        modelRow++;
+    }
+    if(m_hvsNodeTableModel->record(modelRow).value("BRANCH_FLAG").toInt() == 0)
+    {
+        cout<<"Cannot add leaf to a leaf node\n";
+        return;
+    }
+
+    bool ok;
+    QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Table Name"), QLineEdit::Normal, QDir::home().dirName(),&ok);
+
+    int pint = m_hvsNodeTableModel->record(modelRow).value("NODE_ID").toInt();
+    pint = pint * 10;
+    int i = 0;
+    while( i < m_hvsNodeTableModel->rowCount())
+    {  
+        if(pint == m_hvsNodeTableModel->record(i).value("NODE_ID").toInt())
+        {
+            pint++;
+            i = -1;
+        }
+        i++;
+    }
+
+    int row = m_hvsNodeTableModel->rowCount();
+
+    if( ok && !text.isEmpty())
+    {   
+        //This inserts new row inside of of HVS_NODE
+        m_hvsNodeTableModel->insertRow( row);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 0), pint);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 1), text);
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 2), m_hvsNodeTableModel->record(modelRow).value("NODE_ID"));
+        m_hvsNodeTableModel->setData(m_hvsNodeTableModel->index(row, 3), 0);        
+        
+        //This will create the _DATA and _DATA2TAG tables in the database
+        QString dataname = text;
+        QString tagname = text;
+        dataname.append("_DATA");
+        tagname.append("_DATA2TAG");
+
+        QString dataquery;
+        QString data2tagquery;
+        QString dataidstring = text;
+        dataidstring.append("_DATA_ID");
+        QString tagidstring = text;
+        tagidstring.append("_TAG_ID");
+        dataquery = QString("CREATE TABLE IF NOT EXISTS %1 (%2 SLONGLONG UNIQUE)").arg(dataname).arg(dataidstring);
+        data2tagquery = QString("CREATE TABLE IF NOT EXISTS %1(%2 SLONGLONG, %3 SLONGLONG)").arg(tagname).arg(tagidstring).arg(dataidstring);
+
+        QSqlQuery querydata(m_database);
+        querydata.prepare(dataquery);
+        QSqlQuery querydata2tag(m_database);
+        querydata2tag.prepare(data2tagquery);
+
+        if( !querydata.exec())
+        {
+            qDebug() << querydata.lastError().text(); //error in building table
+        }
+        if( !querydata2tag.exec())
+        {
+            qDebug() << querydata2tag.lastError().text(); //error in building table
+        }
+
+        m_hvsNodeTableModel->database().transaction();
+        m_hvsNodeTableModel->submitAll();
+
+        rebuildTree();
+    }
+    else
+    {
+        cout<<"Invalid table name\n";
+    }
+    
+}
+
+/*
+FaserDbPopup::FaserDbPopup(FaserDbMainWindow *window_parent, QWidget *parent)
+    :QWidget(parent)
+{
+    QLineEdit *editor = new QLineEdit(this);
+    show();
+
+}*/
 
 void FaserDbSecondWindow::submit()
 {
@@ -317,15 +510,112 @@ void FaserDbSecondWindow::addRow()
 
 void FaserDbSecondWindow::addColumn()
 {
-    if(!m_tableModel->insertColumn(m_tableView->selectionModel()->currentIndex().column() + 1))
+    bool oktext;
+    QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Table Name"), QLineEdit::Normal, QDir::home().dirName(),&oktext);
+
+    bool oktype;
+    QStringList types;
+    types <<tr("Integer") <<tr("Text")<<tr("Double")<<tr("SLongLong");
+    QString type = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Data Type:"), types, 0, true, &oktype);
+
+    //Checks if we are inserting after a certain column, otherwise adds at beginning
+/*    if(!m_tableModel->insertColumn(m_tableView->selectionModel()->currentIndex().column() + 1))
     {
         m_tableModel->insertColumn(0);
+        m_tableModel->setHeaderData(0, Qt::Horizontal, text);
     }
+    else
+    {
+        m_tableModel->setHeaderData(m_tableView->selectionModel()->currentIndex().column() + 1, Qt::Horizontal, text);
+    }*/
+    QString addcolstr = "ALTER TABLE ";
+    addcolstr.append(m_parentWindow->selectedRowName());
+    addcolstr.append(" ADD COLUMN ");
+    addcolstr.append(text);
+    addcolstr.append(" ");
+    addcolstr.append(type);
+
+    QSqlQuery addcolquery(m_parentWindow->returnDatabase());
+    addcolquery.prepare(addcolstr);
+    if(!addcolquery.exec())
+    {
+        qDebug() <<addcolquery.lastError().text();
+    }
+
+    QString tableName = m_parentWindow->selectedRowName();
+    clearWindow();
+    setWindow(tableName);    
+    
 }
 
 void FaserDbSecondWindow::removeColumn()
 {
-    m_tableModel->removeColumns(m_tableView->selectionModel()->currentIndex().column(), 1);
+//    cout<<"Cannot alter table with sqlite, need to implement function that creates a new table with col to remove gone, then rename that table to curren table name\n";
+    QString rowname = m_parentWindow->selectedRowName();
+    int currentColumnIndex = m_tableView->selectionModel()->currentIndex().column();
+/*    QString remcolstr = "ALTER TABLE ";
+    remcolstr.append(m_parentWindow->selectedRowName());
+    remcolstr.append(" DROP COLUMN ");
+    int currentcol = m_tableView->selectionModel()->currentIndex().column();
+    remcolstr.append(m_tableModel->headerData(currentcol, Qt::Horizontal).toString());
+    cout<<"Cannot alter table with sqlite, need to implement function that creates a new table with col to remove gone, then rename that table to curren table name\n";
+
+    QSqlQuery remcolquery(m_parentWindow->returnDatabase());
+    remcolquery.prepare(remcolstr);
+    if(!remcolquery.exec())
+    {
+        qDebug() <<remcolquery.lastError().text();
+    }*/
+    
+    //Following code is test of remaking table with column removed
+    //This code begins the query string to make a temp table with the column removed
+    QString buildTempStr = "CREATE TABLE temp_table(";
+    QString insertTempStr = "INSERT INTO temp_table SELECT ";
+    QString dropMainStr = "DROP TABLE ";
+    dropMainStr.append(rowname);
+    QString alterTempStr = "ALTER TABLE temp_table RENAME TO ";
+    alterTempStr.append(rowname);
+
+
+    //Following code gets names and data types of the database we are removing a column from
+    QSqlDatabase db = m_parentWindow->returnDatabase();
+    QString infoQryStr;
+    infoQryStr = QString("PRAGMA table_info(%1)").arg(rowname);
+    QSqlQuery tableInfoQuery(db);
+    tableInfoQuery.prepare(infoQryStr);
+    tableInfoQuery.exec();
+
+    bool prevadded = false;
+    while(tableInfoQuery.next())
+    {
+        QString name = tableInfoQuery.value("name").toString();
+        QString type = tableInfoQuery.value("type").toString();
+        if( name != m_tableModel->headerData(currentColumnIndex, Qt::Horizontal).toString())
+        {
+            if(prevadded)
+            {
+                buildTempStr.append(",");
+                insertTempStr.append(",");
+            }
+            insertTempStr.append(name);
+            buildTempStr.append(name);
+            buildTempStr.append(" ");
+            buildTempStr.append(type);
+            prevadded = true;
+        }        
+    }
+    buildTempStr.append(")");
+    insertTempStr.append(" FROM ");
+    insertTempStr.append(rowname);
+
+    QSqlQuery buildTempQuery(buildTempStr, db);
+    QSqlQuery insertTempQuery(insertTempStr, db);
+    QSqlQuery dropMainQuery(dropMainStr, db);
+    QSqlQuery alterTempQuery(alterTempStr, db);
+
+    clearWindow();
+    setWindow(rowname);
+
 }
 
 void FaserDbSecondWindow::removeRow()
@@ -339,8 +629,10 @@ FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidg
    /* , m_standardModel(new QStandardItemModel(this))*/
 {
 //    setCentralWidget(m_tableModel);
+    m_tableView = nullptr;
+    m_parentWindow = window_parent;
 
-    m_tableModel->setTable("HVS_NODE");
+/*    m_tableModel->setTable("HVS_NODE");
     m_tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
     m_tableModel->select();
 
@@ -386,7 +678,7 @@ FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidg
     mainLayout->addWidget(m_buttonBox);
     setLayout(mainLayout);
 
-    setWindowTitle(tr("Edit Table"));
+    setWindowTitle(tr("Edit Table"));*/
 
 
     return;
@@ -398,15 +690,79 @@ QSqlTableModel* FaserDbSecondWindow::tablePointer()
     return m_tableModel;
 }*/
 
-void FaserDbSecondWindow::setTable()
+void FaserDbSecondWindow::setWindow(QString tableName)
 {
-    //Check if table is a _DATA or _DATA2TAG table
-//    if( m_parentWindow->)
+    if(!(tableName.endsWith("_DATA") || tableName.endsWith("_DATA2TAG")))
+    {
+        return;
+    }
+    m_tableModel->setTable(tableName);
+    m_tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
+    m_tableModel->select();
+
+/*    m_tableModel->setHeaderData(0, Qt::Horizontal, tr("NODE_ID"));
+    m_tableModel->setHeaderData(1, Qt::Horizontal, tr("NODE_NAME"));
+    m_tableModel->setHeaderData(2, Qt::Horizontal, tr("PARENT_ID"));
+    m_tableModel->setHeaderData(3, Qt::Horizontal, tr("BRANCH_FLAG"));
+    m_tableModel->setHeaderData(4, Qt::Horizontal, tr("CODE_COMMENT"));    */
+
+    m_tableView = new QTableView;
+    m_tableView->setModel(m_tableModel);
+    m_tableView->resizeColumnsToContents();
+    m_tableView->setMinimumWidth(500);
+
+    m_submitButton = new QPushButton(tr("Submit"));
+    m_submitButton->setDefault(true);
+    m_revertButton = new QPushButton(tr("&Revert"));
+    m_quitButton = new QPushButton(tr("Quit"));
+    m_addRowButton = new QPushButton(tr("&Add Row"));
+    m_addColumnButton = new QPushButton(tr("&Add Column"));
+    m_removeColumn = new QPushButton(tr("&Remove Column"));
+    m_removeRow = new QPushButton(tr("&Remove Row"));
+
+    m_buttonBox = new QDialogButtonBox(Qt::Vertical);
+    m_buttonBox->addButton(m_submitButton, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_revertButton, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_addRowButton, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_addColumnButton, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_removeColumn, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_removeRow, QDialogButtonBox::ActionRole);
+    m_buttonBox->addButton(m_quitButton, QDialogButtonBox::RejectRole);
+
+    connect(m_submitButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::submit);
+    connect(m_revertButton, &QPushButton::clicked, m_tableModel, &QSqlTableModel::revertAll);
+    connect(m_addRowButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::addRow);
+    connect(m_addColumnButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::addColumn);
+    connect(m_removeColumn, &QPushButton::clicked, this,  &FaserDbSecondWindow::removeColumn);
+    connect(m_removeRow, &QPushButton::clicked, this, &FaserDbSecondWindow::removeRow);
+    connect(m_quitButton, &QPushButton::clicked, this, &FaserDbSecondWindow::close);
+
+    QHBoxLayout *mainLayout = new QHBoxLayout();
+    mainLayout->addWidget(m_tableView);
+    mainLayout->addWidget(m_buttonBox);
+    setLayout(mainLayout);
+
+    setWindowTitle(tableName);
+
+
 }
 
-void FaserDbSecondWindow::initializeWindow()
+void FaserDbSecondWindow::clearWindow()
 {
-
+    if(m_tableView != nullptr)
+    {
+        delete layout();
+        delete m_submitButton;
+        delete m_revertButton;
+        delete m_quitButton;
+        delete m_addRowButton;
+        delete m_addColumnButton;
+        delete m_removeColumn;
+        delete m_removeRow;
+        delete m_buttonBox;
+        delete m_tableView;
+        m_tableView = nullptr;
+    }
 }
 
 

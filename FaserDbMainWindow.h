@@ -35,12 +35,20 @@ private:
     QPushButton *m_quitButton;
     QDialogButtonBox *m_buttonBox;*/
     FaserDbSecondWindow *m_secondWindow;
+    QSqlTableModel *m_hvsNodeTableModel;
+    QMenu *m_viewMenu;
+    QMenu *m_contextMenu;
+    QAction* m_addBranch;
+    QAction* m_addLeaf;
+    QString m_currentSelected;
+
     void createActions();
     void createStatusBar();
     void setTable();
-    QSqlTableModel *m_hvsNodeTableModel;
+    void addBranch();
+    void addLeaf();
 
-    QMenu *m_viewMenu;
+//    string obtainNamePopup();
 
 public:
 
@@ -51,13 +59,24 @@ public:
     void setDatabase( QSqlDatabase *db);
 //    void submit();
     QSqlDatabase returnDatabase();
-    void showAll();
     void rebuildTree();
     QString selectedRowName();
+    void selectionChanged(const QItemSelection&, const QItemSelection&);
+
 
 
     // virtual ~FaserDbMainWindow();
 };
+
+/*
+class FaserDbPopup : public QWidget
+{
+    Q_OBJECT
+private:
+
+public:
+    FaserDbPopup(FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
+};*/
 
 class FaserDbSecondWindow : public QWidget
 {
@@ -75,8 +94,6 @@ private:
     FaserDbMainWindow *m_parentWindow;
     QTableView *m_tableView;
 
-    void initializeWindow();
-
 public:
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
     void submit();
@@ -85,7 +102,8 @@ public:
     void addColumn();
     void removeColumn();
     void removeRow();
-    void setTable();
+    void setWindow(QString tableName);
+    void clearWindow();
 
 };
 
