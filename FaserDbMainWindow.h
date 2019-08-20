@@ -6,6 +6,7 @@
 #include <QSqlTableModel>
 #include <QDialog>
 #include <QTableView>
+#include <QtSql>
 
 
 // #include <QtGui/QWidget>
@@ -26,8 +27,8 @@ class FaserDbMainWindow : public QMainWindow
 {
     Q_OBJECT
 private:
-    QTreeView* m_treeView;
-    QStandardItemModel* m_standardModel;
+    QTreeView *m_treeView;
+    QStandardItemModel *m_standardModel;
     QSqlDatabase m_database;
 /*    QSqlTableModel *m_model;
     QPushButton *m_submitButton;
@@ -38,15 +39,23 @@ private:
     QSqlTableModel *m_hvsNodeTableModel;
     QMenu *m_viewMenu;
     QMenu *m_contextMenu;
-    QAction* m_addBranch;
-    QAction* m_addLeaf;
+    QMenu *m_subMenu;
+    QAction *m_addBranch;
+    QAction *m_addLeaf;
+    QAction *m_testTag1;
+    QAction *m_testTag2;
     QString m_currentSelected;
+    vector<string> m_errors;
 
+    void printErrors();
     void createActions();
     void createStatusBar();
     void setTable();
     void addBranch();
     void addLeaf();
+    void testTagFunc(QAction *action);
+
+    void contextMenu(const QPoint &point);
 
 //    string obtainNamePopup();
 
@@ -60,6 +69,7 @@ public:
 //    void submit();
     QSqlDatabase returnDatabase();
     void rebuildTree();
+    bool verifyDatabase();
     QString selectedRowName();
     void selectionChanged(const QItemSelection&, const QItemSelection&);
 
@@ -82,7 +92,8 @@ class FaserDbSecondWindow : public QWidget
 {
     Q_OBJECT
 private:
-    QSqlTableModel *m_tableModel;
+    QSqlRelationalTableModel *m_tableModel;
+//    QSqlTableModel *m_tableModel; previously used, replaced with relational
     QPushButton *m_submitButton;
     QPushButton *m_revertButton;
     QPushButton *m_quitButton;

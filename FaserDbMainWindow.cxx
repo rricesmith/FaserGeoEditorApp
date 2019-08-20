@@ -12,6 +12,7 @@
 #include <QtSql>
 #include <QVariant>
 #include <QSqlField>
+#include <vector>
 
 using namespace std;
 
@@ -98,15 +99,23 @@ void FaserDbMainWindow::initializeWindow()
 
     //This code sets the right click menu for the tree
     m_contextMenu = new QMenu(m_treeView);
-    m_treeView->setContextMenuPolicy(Qt::ActionsContextMenu);
-//    connect(m_treeView, &QWidget::customContextMenuRequested, this, &FaserDbMainWindow::contextMenu);
+    m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_treeView, &QWidget::customContextMenuRequested, this, &FaserDbMainWindow::contextMenu);
     m_addBranch = new QAction("Add Branch", m_contextMenu);
     m_addLeaf = new QAction("Add Leaf", m_contextMenu);
-    m_treeView->addAction(m_addBranch);
-    m_treeView->addAction(m_addLeaf);
+    m_contextMenu->addAction(m_addBranch);
+    m_contextMenu->addAction(m_addLeaf);
     connect(m_addBranch, &QAction::triggered, this, &FaserDbMainWindow::addBranch);
     connect(m_addLeaf, &QAction::triggered, this, &FaserDbMainWindow::addLeaf);
-
+    m_contextMenu->addSeparator();
+    //Add submenu stuff
+    m_subMenu = m_contextMenu->addMenu("Tags");
+/*    m_testTag1 = new QAction("Tag stuff", m_subMenu);
+    m_testTag2 = new QAction("more tag?", m_subMenu);
+    m_subMenu->addAction(m_testTag1);
+    m_subMenu->addAction(m_testTag2);
+    connect(m_testTag1, &QAction::triggered, this, &FaserDbMainWindow::testTag1);
+    connect(m_testTag2, &QAction::triggered, this, &FaserDbMainWindow::testTag2);*/
 
     QStandardItem* root = m_standardModel->invisibleRootItem();
 
@@ -135,7 +144,7 @@ void FaserDbMainWindow::initializeWindow()
         if(model->record(i).value("PARENT_ID").toInt() == 0)
         {
             QList<QStandardItem*> topRow;
-            for(int j = 0; j < model->record(i).count(); j++)
+            for(int j = 0; j < 2; j++)
             {
                 QStandardItem *temp = new QStandardItem(model->record(i).value(j).toString());
                 topRow.push_back(temp);
@@ -181,15 +190,74 @@ void FaserDbMainWindow::initializeWindow()
     m_treeView->expandAll();
     m_treeView->resizeColumnToContents(0);
     m_treeView->resizeColumnToContents(1);
-    m_treeView->resizeColumnToContents(2);
-    m_treeView->resizeColumnToContents(3);
-    m_treeView->resizeColumnToContents(4);
 
 //    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
     connect(m_treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &FaserDbMainWindow::selectionChanged);
 
     return;
+}
+
+//testing custom context menu
+void FaserDbMainWindow::contextMenu(const QPoint &point)
+{
+    //First build a submenu action for each tag id and set its internal tag id data
+    vector<QAction *> actions;
+    if( m_currentSelected.endsWith("_DATA2TAG") )
+    {
+        QSqlTableModel model;
+        model.setTable(m_currentSelected);
+        model.select();
+        vector<QString> tag_ids;
+        for(int i = 0; i < model.rowCount(); i++)
+        {   
+            bool found = false;
+            for(size_t j = 0; j < tag_ids.size(); j++)
+            {
+                if( model.record(i).value(0).toString() == tag_ids[j])
+                {
+                    found = true;
+                    break;
+                }
+            }
+            if( !found)
+            {
+                tag_ids.push_back(model.record(i).value(0).toString());
+            }
+        }
+        for(size_t i = 0; i < tag_ids.size(); i++)
+        {
+            QAction * tempAct = new QAction(tag_ids[i], m_subMenu);
+            actions.push_back(tempAct);
+            tempAct->setData(tag_ids[i]);
+            m_subMenu->addAction(tempAct);
+        }
+/*        m_testTag1 = new QAction("Tag stuff", m_subMenu);
+        m_testTag2 = new QAction("more tag?", m_subMenu);
+        m_testTag1->setData(tr("tag1\n"));
+        m_testTag2->setData(tr("tag2\n"));
+        m_subMenu->addAction(m_testTag1);
+        m_subMenu->addAction(m_testTag2);*/
+
+//        connect(m_testTag1, &QAction::triggered, this, &FaserDbMainWindow::testTag1);
+//        connect(m_testTag2, &QAction::triggered, this, &FaserDbMainWindow::testTag2);
+        connect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::testTagFunc);
+    }
+
+    //Call context menu for every case
+    m_contextMenu->exec(m_treeView->viewport()->mapToGlobal(point));
+    
+    //Delete all actions we made and disconnect them for next use
+    if( m_currentSelected.endsWith("_DATA2TAG") )
+    {
+        disconnect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::testTagFunc);
+
+        for(size_t i = 0; i < actions.size(); i++)
+        {
+            delete actions[i];
+        }
+        m_subMenu->clear();
+    }
 }
 
 void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
@@ -224,6 +292,9 @@ void FaserDbMainWindow::createActions()
     QAction *rebuildAct = fileMenu->addAction(tr("&ReBuild"), this, &FaserDbMainWindow::rebuildTree);
     rebuildAct->setStatusTip(tr("Rebuild tree based off of changes"));
 
+    QAction *verifyAct = fileMenu->addAction(tr("&Verify Database"), this, &FaserDbMainWindow::verifyDatabase);
+    verifyAct->setStatusTip(tr("Verify database adheres to standards"));
+
     QAction *quitAct = fileMenu->addAction(tr("&Quit"), this, &QWidget::close);
     quitAct->setShortcuts(QKeySequence::Quit);
     quitAct->setStatusTip(tr("Quit the application"));
@@ -253,7 +324,7 @@ void FaserDbMainWindow::rebuildTree()
         if(model->record(i).value("PARENT_ID").toInt() == 0)
         {
             QList<QStandardItem*> topRow;
-            for(int j = 0; j < model->record(i).count(); j++)
+            for(int j = 0; j < 2; j++)
             {
                 QStandardItem *temp = new QStandardItem(model->record(i).value(j).toString());
                 topRow.push_back(temp);
@@ -266,10 +337,158 @@ void FaserDbMainWindow::rebuildTree()
     m_treeView->expandAll();
     m_treeView->resizeColumnToContents(0);
     m_treeView->resizeColumnToContents(1);
-    m_treeView->resizeColumnToContents(2);
-    m_treeView->resizeColumnToContents(3);
-    m_treeView->resizeColumnToContents(4);
     show();
+}
+
+bool FaserDbMainWindow::verifyDatabase()
+{
+    //First get a query of all tables in database
+    QSqlTableModel masterTable;
+    masterTable.setTable("sqlite_master");
+    masterTable.select();
+    bool nodeExists = false;
+    bool ltag2ltagExists = false;
+    bool tag2nodeExists = false;
+    bool tag2cacheExists = false;
+    vector<QString> masterTables;
+    for(int i = 0; i < masterTable.rowCount(); i++)
+    {
+        QString tableName = masterTable.record(i).value(1).toString();
+        nodeExists = nodeExists || (tableName.toStdString() == "HVS_NODE") ? true : false;
+        ltag2ltagExists = nodeExists || (tableName.toStdString() == "HVS_LTAG2LTAG") ? true : false;
+        tag2nodeExists = nodeExists || (tableName.toStdString() == "HVS_TAG2NODE") ? true : false;
+        tag2cacheExists = nodeExists || (tableName.toStdString() == "HVS_TAG2CACHE") ? true : false;
+        if(masterTable.record(i).value("type").toString() == "table")
+        {
+            masterTables.push_back(tableName);        
+        }
+    }
+    if( !(ltag2ltagExists && nodeExists && tag2nodeExists && tag2cacheExists))
+    {
+        if(!nodeExists)
+        {
+            m_errors.push_back("HVS_NODE does not exist");
+        }
+        if(!ltag2ltagExists)
+        {
+            m_errors.push_back("HVS_LTAG2LTAG does not exist");
+        }
+        if(!tag2nodeExists)
+        {
+            m_errors.push_back("HVS_TAG2NODE does not exist");
+        }
+        if(!tag2cacheExists)
+        {
+            m_errors.push_back("HVS_TAG2CACHE does not exist");
+        }
+        printErrors();
+        return false;
+    }
+
+    //Now set tables for hvs_node and hvs_tag2node
+    QSqlTableModel hvsNodeTable;
+    hvsNodeTable.setTable("HVS_NODE");
+    hvsNodeTable.select();
+
+    //First we will verify all node id's in hvs_node are unique
+    vector<QString> node_ids;
+    for(auto i = 0; i < hvsNodeTable.rowCount(); i++)
+    {
+        bool matched = false;
+        for(size_t j = 0; j < node_ids.size() && !node_ids.empty() && !matched; j++)
+        {
+            if( hvsNodeTable.record(i).value("NODE_ID").toString() == node_ids[j])
+            {
+                string err = "Repeated NODE_ID in row ";
+                err += hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+                err += " of value ";
+                err += hvsNodeTable.record(i).value("NODE_ID").toString().toStdString();
+                matched = true;
+                m_errors.push_back(err);
+            }
+        }
+        if(!matched)
+        {
+            node_ids.push_back(hvsNodeTable.record(i).value("NODE_ID").toString());
+        }
+    }
+
+    //Next we will verify all tag id's are unique, and that all node_ids are also in HVS_NODE
+    vector<QString> tag_ids;
+    QSqlTableModel hvsTag2NodeTable;
+    hvsTag2NodeTable.setTable("HVS_TAG2NODE");
+    hvsTag2NodeTable.select();
+
+    for(int i = 0; i < hvsTag2NodeTable.rowCount(); i++)
+    {
+        QString curNodeId = hvsTag2NodeTable.record(i).value("NODE_ID").toString();
+        //Case where node id is in tag2node but not hvs_node
+        if( std::find(node_ids.begin(), node_ids.end(), curNodeId) == node_ids.end())
+        {
+            string err = "Node ID in HVS_TAG2NODE not found in HVS_NODE of ";
+            err += curNodeId.toStdString();
+            m_errors.push_back(err);
+        }
+
+        //Next part ensures all tag ids are unique
+        QString curTagId = hvsTag2NodeTable.record(i).value("TAG_ID").toString();
+        if( std::find(tag_ids.begin(), tag_ids.end(), curTagId) != tag_ids.end())
+        {
+            string err = "Repeated Tag ID in HVS_TAG2NODE of ";
+            err += curTagId.toStdString();
+            m_errors.push_back(err);
+        }
+        else
+        {
+            tag_ids.push_back(curTagId);
+        }
+    }
+    //Now checking that all nodes in hvs_node are in hvs_tag2node
+    for(size_t i = 0; i < node_ids.size(); i++)
+    {
+        bool found = false;
+        for( int j = 0; j < hvsTag2NodeTable.rowCount() && !found; j++)
+        {
+            found = found || (node_ids[i] == hvsTag2NodeTable.record(j).value("NODE_ID").toString()) ? true : false;
+        }
+        if(!found)
+        {
+            string err = "Node ID in HVS_NODE not in HVS_TAG2NODE of ";
+            err += node_ids[i].toStdString();
+            m_errors.push_back(err);
+        }
+    }
+
+    //Now we need to verify that HVS_NODE is built properly
+
+
+
+    if(m_errors.empty())
+    {
+        return true;
+    }
+    else
+    {
+        printErrors();
+        return false;
+    }
+    
+}
+
+void FaserDbMainWindow::printErrors()
+{
+    if(m_errors.empty())
+    {
+        cout<<"No m_errors found\n\n";
+        return;
+    }
+    while(!m_errors.empty())
+    {
+        cout<<m_errors.back()<<endl;
+        m_errors.pop_back();
+    }
+    return;
+
 }
 
 void FaserDbMainWindow::createStatusBar()
@@ -286,7 +505,7 @@ void FaserDbMainWindow::buildChildren( QList<QStandardItem*> *PRow, QString pare
         if(model->record(i).value("PARENT_ID").toString() == parent_id)
         {  
             QList<QStandardItem*> *newRow = new QList<QStandardItem*>;
-            for(int j = 0; j < model->record(i).count(); j++)
+            for(int j = 0; j < 2; j++)
             {
                 QStandardItem *temp = new QStandardItem(model->record(i).value(j).toString());
                 newRow->push_back(temp);
@@ -474,6 +693,14 @@ void FaserDbMainWindow::addLeaf()
     
 }
 
+void FaserDbMainWindow::testTagFunc(QAction *action)
+{
+    QString input = action->data().toString();
+    cout<<input.toStdString()<<endl;
+}
+
+
+
 /*
 FaserDbPopup::FaserDbPopup(FaserDbMainWindow *window_parent, QWidget *parent)
     :QWidget(parent)
@@ -625,7 +852,7 @@ void FaserDbSecondWindow::removeRow()
 
 FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidget* parent)
     : QWidget(parent)
-    , m_tableModel(new QSqlTableModel(nullptr, window_parent->returnDatabase()))
+    , m_tableModel(new QSqlRelationalTableModel(nullptr, window_parent->returnDatabase()))
    /* , m_standardModel(new QStandardItemModel(this))*/
 {
 //    setCentralWidget(m_tableModel);
@@ -698,6 +925,12 @@ void FaserDbSecondWindow::setWindow(QString tableName)
     }
     m_tableModel->setTable(tableName);
     m_tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
+
+    if( tableName.endsWith("_DATA2TAG") )
+    {
+        m_tableModel->setRelation(0, QSqlRelation("HVS_TAG2NODE", "TAG_ID", "TAG_NAME"));
+    }
+
     m_tableModel->select();
 
 /*    m_tableModel->setHeaderData(0, Qt::Horizontal, tr("NODE_ID"));
