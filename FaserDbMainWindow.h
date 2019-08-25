@@ -54,6 +54,7 @@ private:
     void addBranch();
     void addLeaf();
     void testTagFunc(QAction *action);
+    bool isBranch(QString name);
 
     void contextMenu(const QPoint &point);
 
@@ -72,6 +73,7 @@ public:
     bool verifyDatabase();
     QString selectedRowName();
     void selectionChanged(const QItemSelection&, const QItemSelection&);
+    bool isLocked(QString tagId);
 
 
 
@@ -104,6 +106,8 @@ private:
     QDialogButtonBox *m_buttonBox;
     FaserDbMainWindow *m_parentWindow;
     QTableView *m_tableView;
+    Qt::ItemFlags flags(const QModelIndex &index) const;
+
 
 public:
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);

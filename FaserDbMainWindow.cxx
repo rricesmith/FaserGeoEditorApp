@@ -101,13 +101,15 @@ void FaserDbMainWindow::initializeWindow()
     m_contextMenu = new QMenu(m_treeView);
     m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_treeView, &QWidget::customContextMenuRequested, this, &FaserDbMainWindow::contextMenu);
-    m_addBranch = new QAction("Add Branch", m_contextMenu);
+/*    m_addBranch = new QAction("Add Branch", m_contextMenu);
     m_addLeaf = new QAction("Add Leaf", m_contextMenu);
     m_contextMenu->addAction(m_addBranch);
     m_contextMenu->addAction(m_addLeaf);
     connect(m_addBranch, &QAction::triggered, this, &FaserDbMainWindow::addBranch);
     connect(m_addLeaf, &QAction::triggered, this, &FaserDbMainWindow::addLeaf);
-    m_contextMenu->addSeparator();
+    m_contextMenu->addSeparator();*/
+
+
     //Add submenu stuff
     m_subMenu = m_contextMenu->addMenu("Tags");
 /*    m_testTag1 = new QAction("Tag stuff", m_subMenu);
@@ -198,15 +200,56 @@ void FaserDbMainWindow::initializeWindow()
     return;
 }
 
+bool FaserDbMainWindow::isBranch(QString name)
+{
+    int index;
+    bool value = false;
+    for(index = 0; index < m_hvsNodeTableModel->rowCount(); index++)
+    {
+        if(m_hvsNodeTableModel->record(index).value("NODE_NAME").toString() == name)
+        {
+            value  = m_hvsNodeTableModel->record(index).value("BRANCH_FLAG").toString().endsWith("1"); 
+            break;
+        }
+    }
+    return value;
+
+}
+
 //testing custom context menu
 void FaserDbMainWindow::contextMenu(const QPoint &point)
 {
+    //Add branch/leaf functions if selected is a branch
+    if(isBranch(m_currentSelected))
+    {
+        m_addBranch = new QAction("Add Branch", m_contextMenu);
+        m_addLeaf = new QAction("Add Leaf", m_contextMenu);
+        m_contextMenu->addAction(m_addBranch);
+        m_contextMenu->addAction(m_addLeaf);
+        connect(m_addBranch, &QAction::triggered, this, &FaserDbMainWindow::addBranch);
+        connect(m_addLeaf, &QAction::triggered, this, &FaserDbMainWindow::addLeaf);
+        m_contextMenu->addSeparator();
+    }
+
+    //Now set current QString to reflect the correspondng data2tag if we are looking at a leaf or data table
+    QString current = m_currentSelected;
+    if( !isBranch(current) && !current.endsWith("_DATA2TAG"))
+    {
+        if(current.endsWith("_DATA"))
+        {
+            current.replace(QString("_DATA"), QString("_DATA2TAG"));
+        }
+        else
+        {
+            current.append("_DATA2TAG");
+        }
+    }
     //First build a submenu action for each tag id and set its internal tag id data
     vector<QAction *> actions;
-    if( m_currentSelected.endsWith("_DATA2TAG") )
+    if( current.endsWith("_DATA2TAG") )
     {
         QSqlTableModel model;
-        model.setTable(m_currentSelected);
+        model.setTable(current);
         model.select();
         vector<QString> tag_ids;
         for(int i = 0; i < model.rowCount(); i++)
@@ -248,16 +291,28 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
     m_contextMenu->exec(m_treeView->viewport()->mapToGlobal(point));
     
     //Delete all actions we made and disconnect them for next use
+    if(isBranch(m_currentSelected))
+    {
+        disconnect(m_contextMenu, &QMenu::triggered, this, &FaserDbMainWindow::addBranch);
+        disconnect(m_contextMenu, &QMenu::triggered, this, &FaserDbMainWindow::addLeaf);
+        delete m_addBranch;
+        delete m_addLeaf;
+    }
     if( m_currentSelected.endsWith("_DATA2TAG") )
     {
         disconnect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::testTagFunc);
 
-        for(size_t i = 0; i < actions.size(); i++)
+/*        for(size_t i = 0; i < actions.size(); i++)
         {
             delete actions[i];
         }
-        m_subMenu->clear();
+        m_subMenu->clear();*/
     }
+    for(size_t i = 0; i < actions.size(); i++)
+    {
+        delete actions[i];
+    }
+    m_subMenu->clear();
 }
 
 void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const QItemSelection& deselected)
@@ -266,20 +321,58 @@ void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const Q
     {
         m_currentSelected = selected.indexes().at(1).data(0).toString();
     }
-    if(!selected.isEmpty() && (selected.indexes().at(1).data(0).toString().endsWith("_DATA") || selected.indexes().at(1).data(0).toString().endsWith("_DATA2TAG")))
+
+    if(!selected.isEmpty() 
+        && (selected.indexes().at(1).data(0).toString().endsWith("_DATA") 
+        || selected.indexes().at(1).data(0).toString().endsWith("_DATA2TAG")))
     {
         m_secondWindow->hide();
         m_secondWindow->clearWindow();
         m_secondWindow->setWindow(selected.indexes().at(1).data(0).toString());
         m_secondWindow->show();
+        return;
 /*        for(int i = 0; i < 4; i++) at(i), i gives column num, data(j), j idk
         {
             string changedindex = selected.indexes().at(1).data(i).toString().toStdString();
             cout<<changedindex<<endl;
         }*/
     }
+    //Following case hides window when you select branches(to avoid errant functions happening)
+    for(int i = 0; i < m_hvsNodeTableModel->rowCount(); i++)
+    {
+        if( m_hvsNodeTableModel->record(i).value("NODE_NAME").toString() == selected.indexes().at(1).data(0).toString())
+        {
+            m_secondWindow->hide();
+            m_secondWindow->clearWindow();
+            return;
+        }
+    }
+
+
+    bool found = false;
+    int i;
+    for( i = 0; i < m_hvsNodeTableModel->rowCount(); i++)
+    {
+        if( m_hvsNodeTableModel->record(i).value("NODE_NAME").toString() == selected.indexes().at(1).data(0).toString())
+        {
+            found = true;
+            break;
+        }
+    }
+    if(found && m_hvsNodeTableModel->record(i).value("BRANCH_FLAG").toString().endsWith("0"))
+    {
+        QString nodename = selected.indexes().at(1).data(0).toString();
+        nodename.append("_DATA");
+        m_secondWindow->hide();
+        m_secondWindow->clearWindow();
+        m_secondWindow->setWindow(nodename);
+        m_secondWindow->show();
+        return;
+
+    }
     if(deselected.isEmpty())
-    {}
+    { //this code is to supress warning of unused deselected
+    }
 }
 
 void FaserDbMainWindow::createActions()
@@ -693,10 +786,33 @@ void FaserDbMainWindow::addLeaf()
     
 }
 
+//Current filler function, is dynamic action function that utilized the data put insode the action
 void FaserDbMainWindow::testTagFunc(QAction *action)
 {
     QString input = action->data().toString();
     cout<<input.toStdString()<<endl;
+}
+
+//This function is used to check if a tagId is locked according to HVS_TAG2NODE
+bool FaserDbMainWindow::isLocked(QString tagId)
+{
+    QSqlTableModel tag2node;
+    tag2node.setTable("HVS_TAG2NODE");
+    tag2node.select();
+    
+    int i = 0;
+    for(; i < tag2node.rowCount(); i++)
+    {
+        if( tag2node.record(i).value("TAG_ID").toString() == tagId)
+        {
+            break;
+        }
+    }
+    if(tag2node.record(i).value("TAG_ID").toString() == tagId)
+    {
+        return tag2node.record(i).value("LOCKED").toBool();
+    }
+    return false;
 }
 
 
@@ -777,9 +893,23 @@ void FaserDbSecondWindow::addColumn()
 
 void FaserDbSecondWindow::removeColumn()
 {
+    for(int i = 0; i < m_tableModel->rowCount(); i++)
+    {
+        QString tagId = m_tableModel->record(i).value(0).toString();
+        if( m_parentWindow->isLocked(tagId))
+        {
+            cout<<"Trying to delete date from a locked column\n";
+            return;
+        }
+    }
 //    cout<<"Cannot alter table with sqlite, need to implement function that creates a new table with col to remove gone, then rename that table to curren table name\n";
     QString rowname = m_parentWindow->selectedRowName();
     int currentColumnIndex = m_tableView->selectionModel()->currentIndex().column();
+    if(currentColumnIndex == 0)
+    {
+        cout<<"Cannot delete associated TAG_ID column\n";
+        return;
+    }
 /*    QString remcolstr = "ALTER TABLE ";
     remcolstr.append(m_parentWindow->selectedRowName());
     remcolstr.append(" DROP COLUMN ");
@@ -998,5 +1128,45 @@ void FaserDbSecondWindow::clearWindow()
     }
 }
 
+//Following fucntion is reimplementation of flags function
+//Reimplemented to return a non-editable flag for rows where data is locked
+Qt::ItemFlags FaserDbSecondWindow::flags(const QModelIndex &index) const
+{
+Qt::ItemFlags flags;
+
+//    flags = QAbstractItemModel::flags(index);
+    if(index.isValid())
+    {
+    }
+    QString tableName = m_parentWindow->selectedRowName();
+    int row = m_tableView->selectionModel()->currentIndex().row();
+    if( !tableName.endsWith("_DATA2TAG"))
+    {
+        if( tableName.endsWith("_DATA"))
+        {
+            tableName.append("2TAG");
+        }
+        else
+        {
+            tableName.append("_DATA2TAG");
+        }
+    }
+
+    QSqlTableModel tagTable;
+    tagTable.setTable(tableName);
+    tagTable.select();
+
+    QString tagId = tagTable.record(row).value(0).toString();
+
+    if( m_parentWindow->isLocked(tagId))
+    {
+//        flags = Qt::ItemIsSelectable;
+        return Qt::ItemIsSelectable;
+    }
+
+    return Qt::ItemIsEditable;
+
+
+}
 
 
