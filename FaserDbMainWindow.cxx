@@ -21,6 +21,7 @@ FaserDbMainWindow::FaserDbMainWindow(QWidget* parent)
     , m_treeView(new QTreeView(this))
     , m_standardModel(new QStandardItemModel(this))
 {
+    showMaximized();
 /*    setCentralWidget(m_treeView);
 
     QStandardItem* root = m_standardModel->invisibleRootItem();
@@ -101,23 +102,10 @@ void FaserDbMainWindow::initializeWindow()
     m_contextMenu = new QMenu(m_treeView);
     m_treeView->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_treeView, &QWidget::customContextMenuRequested, this, &FaserDbMainWindow::contextMenu);
-/*    m_addBranch = new QAction("Add Branch", m_contextMenu);
-    m_addLeaf = new QAction("Add Leaf", m_contextMenu);
-    m_contextMenu->addAction(m_addBranch);
-    m_contextMenu->addAction(m_addLeaf);
-    connect(m_addBranch, &QAction::triggered, this, &FaserDbMainWindow::addBranch);
-    connect(m_addLeaf, &QAction::triggered, this, &FaserDbMainWindow::addLeaf);
-    m_contextMenu->addSeparator();*/
 
 
     //Add submenu stuff
     m_subMenu = m_contextMenu->addMenu("Tags");
-/*    m_testTag1 = new QAction("Tag stuff", m_subMenu);
-    m_testTag2 = new QAction("more tag?", m_subMenu);
-    m_subMenu->addAction(m_testTag1);
-    m_subMenu->addAction(m_testTag2);
-    connect(m_testTag1, &QAction::triggered, this, &FaserDbMainWindow::testTag1);
-    connect(m_testTag2, &QAction::triggered, this, &FaserDbMainWindow::testTag2);*/
 
     QStandardItem* root = m_standardModel->invisibleRootItem();
 
@@ -125,23 +113,9 @@ void FaserDbMainWindow::initializeWindow()
     createActions();
     createStatusBar();
 
-/*    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
-    connect(m_treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &FaserDbMainWindow::selectionChanged);*/
     QSqlTableModel *model = m_hvsNodeTableModel;
-//    QSqlTableModel *model = m_secondWindow->tablePointer();
-/*    m_model = new QSqlTableModel(nullptr, m_database);
-    m_model->setTable("HVS_NODE");
-    m_model->setEditStrategy(QSqlTableModel::OnManualSubmit);
-    m_model->select();
-
-    root->setData( tr("NODE_ID"), 1);
-    model->setHeaderData(1, Qt::Horizontal, tr("NODE_NAME"));
-    model->setHeaderData(2, Qt::Horizontal, tr("PARENT_ID"));
-    model->setHeaderData(3, Qt::Horizontal, tr("BRANCH_FLAG"));
-    model->setHeaderData(4, Qt::Horizontal, tr("CODE_COMMENT"));*/
     
-    for(int i = 1; i < model->rowCount(); i++)
+    for(int i = 0; i < model->rowCount(); i++)
     {
         if(model->record(i).value("PARENT_ID").toInt() == 0)
         {
@@ -156,44 +130,13 @@ void FaserDbMainWindow::initializeWindow()
         }
     }
 
-//Test code of editing from cached table example
-/*    QTableView *view = new QTableView;
-    view->setModel(m_standardModel);
-    view->resizeColumnsToContents();
 
-    m_submitButton = new QPushButton(tr("Submit"));
-    m_submitButton->setDefault(true);
-    m_revertButton = new QPushButton(tr("&Revert"));
-    m_quitButton = new QPushButton(tr("Quit"));
-
-    m_buttonBox = new QDialogButtonBox(Qt::Vertical);
-    m_buttonBox->addButton(m_submitButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_revertButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_quitButton, QDialogButtonBox::RejectRole);
-
-    connect(m_submitButton, &QPushButton::clicked, this,  &FaserDbMainWindow::submit);
-    connect(m_revertButton, &QPushButton::clicked, m_model, &QSqlTableModel::revertAll);
-    connect(m_quitButton, &QPushButton::clicked, this, &FaserDbMainWindow::close);
-
-    QHBoxLayout *mainLayout = new QHBoxLayout;
-    mainLayout->addWidget(view);
-    mainLayout->addWidget(m_buttonBox);
-    setLayout(mainLayout);
-
-    setWindowTitle(tr("Edit Table"));
-
-    view->show();*/
-    
-//    root->appendRow(firstRow);
-//    QList<QStandardItem*> subRow = prepareRow( m_model->record(2).value(0).toString(), m_model->record(2).value(1).toString(), m_model->record(2).value(2).toString(), m_model->record(2).value(3).toString(), m_model->record(2).value(4).toString() );
-//    firstRow.first()->appendRow(subRow);
 
     m_treeView->setModel(m_standardModel);
     m_treeView->expandAll();
     m_treeView->resizeColumnToContents(0);
     m_treeView->resizeColumnToContents(1);
 
-//    m_treeView->setSelectionMode(QAbstractItemView::SingleSelection);
     m_treeView->setSelectionBehavior(QAbstractItemView::SelectRows);
     connect(m_treeView->selectionModel(), &QItemSelectionModel::selectionChanged, this, &FaserDbMainWindow::selectionChanged);
 
@@ -231,8 +174,16 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
         m_contextMenu->addSeparator();
     }
 
+    //Add create tag action for hvs_node rows only
+    QString current = m_currentSelected;    
+    if( !current.endsWith("_DATA") && !current.endsWith("_DATA2TAG"))
+    {
+        m_createTag = new QAction("Create Tag", m_contextMenu);
+        m_contextMenu->addAction(m_createTag);     
+        connect(m_createTag, &QAction::triggered, this, &FaserDbMainWindow::createTag );
+    }
+
     //Now set current QString to reflect the correspondng data2tag if we are looking at a leaf or data table
-    QString current = m_currentSelected;
     if( !isBranch(current) && !current.endsWith("_DATA2TAG"))
     {
         if(current.endsWith("_DATA"))
@@ -275,21 +226,15 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
             tempAct->setData(tag_ids[i]);
             m_subMenu->addAction(tempAct);
         }
-/*        m_testTag1 = new QAction("Tag stuff", m_subMenu);
-        m_testTag2 = new QAction("more tag?", m_subMenu);
-        m_testTag1->setData(tr("tag1\n"));
-        m_testTag2->setData(tr("tag2\n"));
-        m_subMenu->addAction(m_testTag1);
-        m_subMenu->addAction(m_testTag2);*/
-
-//        connect(m_testTag1, &QAction::triggered, this, &FaserDbMainWindow::testTag1);
-//        connect(m_testTag2, &QAction::triggered, this, &FaserDbMainWindow::testTag2);
-        connect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::testTagFunc);
+        connect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::tagAction);
     }
 
-    //Call context menu for every case
+
+
+    //Connect our menu choice to the proper action
     m_contextMenu->exec(m_treeView->viewport()->mapToGlobal(point));
     
+
     //Delete all actions we made and disconnect them for next use
     if(isBranch(m_currentSelected))
     {
@@ -298,9 +243,14 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
         delete m_addBranch;
         delete m_addLeaf;
     }
+    if( !current.endsWith("_DATA") && !current.endsWith("_DATA2TAG"))
+    {
+        disconnect(m_contextMenu, &QMenu::triggered, this, &FaserDbMainWindow::createTag);
+        delete m_createTag;
+    }
     if( m_currentSelected.endsWith("_DATA2TAG") )
     {
-        disconnect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::testTagFunc);
+        disconnect(m_subMenu, &QMenu::triggered, this, &FaserDbMainWindow::tagAction);
 
 /*        for(size_t i = 0; i < actions.size(); i++)
         {
@@ -331,24 +281,9 @@ void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const Q
         m_secondWindow->setWindow(selected.indexes().at(1).data(0).toString());
         m_secondWindow->show();
         return;
-/*        for(int i = 0; i < 4; i++) at(i), i gives column num, data(j), j idk
-        {
-            string changedindex = selected.indexes().at(1).data(i).toString().toStdString();
-            cout<<changedindex<<endl;
-        }*/
-    }
-    //Following case hides window when you select branches(to avoid errant functions happening)
-    for(int i = 0; i < m_hvsNodeTableModel->rowCount(); i++)
-    {
-        if( m_hvsNodeTableModel->record(i).value("NODE_NAME").toString() == selected.indexes().at(1).data(0).toString())
-        {
-            m_secondWindow->hide();
-            m_secondWindow->clearWindow();
-            return;
-        }
     }
 
-
+    //First second finds corresponding record in our table model
     bool found = false;
     int i;
     for( i = 0; i < m_hvsNodeTableModel->rowCount(); i++)
@@ -359,6 +294,7 @@ void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const Q
             break;
         }
     }
+    //And then checks if its a leaf to display data, or a branch to hide data
     if(found && m_hvsNodeTableModel->record(i).value("BRANCH_FLAG").toString().endsWith("0"))
     {
         QString nodename = selected.indexes().at(1).data(0).toString();
@@ -370,6 +306,13 @@ void FaserDbMainWindow::selectionChanged(const QItemSelection& selected, const Q
         return;
 
     }
+    //Hide window for branch case to avoid errant behavior (editing tables when wrong row selected in treeview will mess it up)
+    else
+    {
+        m_secondWindow->hide();
+        m_secondWindow->clearWindow();
+    }
+    
     if(deselected.isEmpty())
     { //this code is to supress warning of unused deselected
     }
@@ -659,10 +602,17 @@ void FaserDbMainWindow::addBranch()
         return;
     }
 
-
+    //Get name of table we are creating
     bool ok;
     QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Table Name"), QLineEdit::Normal, QDir::home().dirName(),&ok);
- 
+
+    if( !ok)
+    {   
+        cout<<"Invalid name/exited\n";
+        return;
+    }
+
+
     int pint = m_hvsNodeTableModel->record(modelRow).value("NODE_ID").toInt();
     pint = pint * 10;
     int i = 0;
@@ -787,10 +737,13 @@ void FaserDbMainWindow::addLeaf()
 }
 
 //Current filler function, is dynamic action function that utilized the data put insode the action
-void FaserDbMainWindow::testTagFunc(QAction *action)
+void FaserDbMainWindow::tagAction(QAction *action)
 {
+    //Get the saved data in the action, which is the tag we are filtering for
     QString input = action->data().toString();
-    cout<<input.toStdString()<<endl;
+
+    m_secondWindow->setTagFilter(input);
+
 }
 
 //This function is used to check if a tagId is locked according to HVS_TAG2NODE
@@ -815,6 +768,269 @@ bool FaserDbMainWindow::isLocked(QString tagId)
     return false;
 }
 
+//Function is used to find associated values, ie given a child tag id find parent tag id
+QStringList FaserDbMainWindow::findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search)
+{
+    QStringList found;
+    for(int i = 0; i < table->rowCount(); i++)
+    {
+        if( table->record(i).value(known).toString() == kvalue)
+        {
+            found<<table->record(i).value(search).toString();
+        }
+    }
+    return found;
+}
+
+//This function returns a qstring of the associated nodeId of the given 
+QString FaserDbMainWindow::findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search)
+{
+    QString found;
+    for(int i = 0; i < table->rowCount(); i++)
+    {
+        if( table->record(i).value(known).toString() == kvalue)
+        {
+            found = table->record(i).value(search).toString();
+            break;
+        }
+    }
+    return found;
+}
+
+QString FaserDbMainWindow::createTag()
+{
+    //This function only works if used on root, or on a node whose parent has a unlocked tag
+    //Get tag we are creating under
+    QString nodeGettingTagName = selectedRowName();
+    QString nodeGettingTagId = findAssociated( m_hvsNodeTableModel, QString("NODE_NAME"), nodeGettingTagName, QString("NODE_ID"));
+    QString newTag;
+    QString nullTag;
+
+    QSqlTableModel ltag2ltag;
+    ltag2ltag.setTable("HVS_LTAG2LTAG");
+    ltag2ltag.select();
+    QSqlTableModel tag2node;
+    tag2node.setTable("HVS_TAG2NODe");
+    tag2node.select();
+    QSqlTableModel tag2cache;
+    tag2cache.setTable("HVS_TAG2CACHE");
+    tag2cache.select();
+    bool ok = false;
+
+
+    int tagAvailable = 0;
+    for(int i = 0; i < tag2node.rowCount(); i++)
+    {
+        tagAvailable = (tag2node.record(i).value("TAG_ID").toString().toInt() > tagAvailable) ? tag2node.record(i).value("TAG_ID").toString().toInt() : tagAvailable;
+    }
+    tagAvailable++;
+    newTag = QString::number(tagAvailable);
+
+    //Case where we are making a root tag
+    if(nodeGettingTagName == "FASER")
+    {
+
+        QString rootTag = QInputDialog::getItem(this, tr("QInputDialog::getText()"), tr("New Root Tag name:"),
+            findAssociatedList( &tag2node, QString("NODE_ID"), nodeGettingTagId, QString("TAG_NAME")), 0, true, &ok);
+        if( !ok)
+        {
+            cout<<"Error in name given/closed window\n";
+            return nullTag;
+        }
+
+        //Prevent repeated root name
+        for(int i = 0; i < tag2cache.rowCount(); i++)
+        {
+            if(tag2cache.record(i).value(0).toString() == rootTag)
+            {
+                QMessageBox messageBox;
+                messageBox.critical(0, "Error", "Root tag name input is already taken");
+                messageBox.setFixedSize(500,200);
+                messageBox.exec();
+            }
+        }
+
+        //Get tag we will make this new one as a replica of
+        QStringList replicateList;
+        for(int i = 0; i < tag2cache.rowCount(); i++)
+        {
+            if( !replicateList.contains(tag2cache.record(i).value("ROOTTAG").toString()))
+            {
+                replicateList.push_back(tag2cache.record(i).value("ROOTTAG").toString());
+            }
+        }
+        QString replicateTag = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Root tag to initially copy:"), replicateList, 0, false, &ok);
+        if( !ok)
+        {
+            cout<<"Failed to get tag to replicate to/closed window\n";
+            return nullTag;
+        }
+
+        //Get list of children who will be under our new tag so we put proper children under our new tag
+        QStringList childTags = findAssociatedList( &tag2cache, tr("ROOTTAG"), replicateTag, tr("CHILDTAG"));
+
+        //Valid root tag name
+        //Make appropriate row inserts in each table
+        //Get highest tag value then increment
+        //Edit ltag2ltag
+        for(int i = 0; i < ltag2ltag.rowCount(); i++)
+        {
+            if( ltag2ltag.record(i).value("PARENT_NODE").toString() == "0" 
+                && ltag2ltag.record(i).value("PARENT_TAG").toString() != newTag
+                && childTags.contains(ltag2ltag.record(i).value("CHILD_TAG").toString()))
+            {
+                QSqlRecord record = ltag2ltag.record(i);
+                record.setValue("PARENT_TAG", newTag);
+
+                ltag2ltag.insertRecord(-1, record);
+            }
+        }
+        ltag2ltag.submitAll();
+
+        //Edit tag2node
+        for(int i = 0; i < tag2node.rowCount(); i++)
+        {
+            if(  tag2node.record(i).value("TAG_NAME").toString() == replicateTag)
+            {
+                QSqlRecord record = tag2node.record(i);
+                record.setValue("TAG_NAME", rootTag);
+                record.setValue("TAG_ID", newTag);
+                record.setNull("TAG_COMMENT");
+                record.setValue("LOCKED", QString("0"));
+                record.setValue("REPLICATED", QString("0"));
+                auto dt = QDateTime::currentMSecsSinceEpoch();
+                record.setValue("DATE_CREATED", QString::number(dt));
+                record.setNull("DATE_LOCKED");
+
+                tag2node.insertRecord(-1, record);
+
+            }
+        }
+
+        //Edit tag2cache
+        for(int i = 0; i < tag2cache.rowCount(); i++)
+        {
+            if(tag2cache.record(i).value("ROOTTAG").toString() == replicateTag)
+            {
+                QSqlRecord record = tag2cache.record(i);
+                record.setValue("ROOTTAG", rootTag);
+
+                tag2cache.insertRecord(-1, record);
+            }
+        }
+        tag2cache.submitAll();
+
+
+    }
+
+    //Case of adding tag to non root
+    //Get list of unlocked parents
+    QStringList parentTags = findAssociatedList( &ltag2ltag, QString("CHILD_NODE"), nodeGettingTagId, QString("PARENT_TAG"));
+    for(int i = 0; i < parentTags.size(); i++)
+    {
+        if( !isLocked(parentTags.at(i)))
+        {
+            parentTags.removeAt(i);
+            i = 0;
+        }
+    }
+    //Case of no unlocked parent tags, can't add tag
+    if(parentTags.empty())
+    {
+        QMessageBox messageBox;;
+        messageBox.critical(0, "Error", "No unlocked parent tags to choose from");
+        messageBox.setFixedSize(500,200);
+        messageBox.exec();
+        return nullTag;
+    }
+
+    //Get parent tag to make under
+    QStringList parentTagNames;
+    for(int i = 0; i < parentTags.size(); i++)
+    {
+        parentTagNames.push_back( findAssociated( &tag2node, QString("TAG_ID"), parentTags.at(i), QString("TAG_NAME")));
+    }
+    QString parentTagName = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Unlocked tag to set as parent of new tag:"), parentTagNames, 0, false, &ok);
+    QString parentTag = findAssociated(&tag2node, QString("TAG_NAME"), parentTagName, QString("TAG_ID"));
+
+    if(!ok)
+    { //user exited choosing
+        cout<<"Failed to obtain parent tag for new tag\n";
+        return nullTag;
+    }
+
+    //Now we need to choose an existing tag ours will be a copy of
+    QStringList currentTags = findAssociatedList( &tag2node, QString("NODE_ID"), nodeGettingTagId, QString("TAG_ID"));
+    QString copyTag = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Choose tag to initialize as copy of:"), currentTags, 0, false, &ok);
+    if( !ok)
+    {//user closed window
+        cout<<"No tag to copy passed through\n";
+        return nullTag;
+    }
+
+    //Lastly get name of new tag
+    QString newTagName = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Tag name:"), QLineEdit::Normal, parentTag, &ok);
+    if( !ok || currentTags.contains(newTagName))
+    {
+        cout<<"Failed to get new tag name/input repeated tag name\n";
+        return nullTag;
+    }
+
+    //Now we edit the three tables, inserting our new tag
+    //Edit ltag2ltag
+    for(int i = 0; i < ltag2ltag.rowCount(); i++)
+    {
+        if(ltag2ltag.record(i).value("PARENT_TAG").toString() == parentTag
+            && ltag2ltag.record(i).value("CHILD_TAG").toString() == copyTag)
+        {
+            ltag2ltag.record(i).setValue("CHILD_TAG", newTag);
+
+        }
+        if(ltag2ltag.record(i).value("PARENT_TAG").toString() == copyTag)
+        {
+            QSqlRecord record = ltag2ltag.record(i);
+            record.setValue("PARENT_TAG", newTag);
+
+            ltag2ltag.insertRecord(-1, record);
+        }
+    }
+
+    //Edit tag2node
+    for(int i = 0; i < tag2node.rowCount(); i++)
+    {
+        if(tag2node.record(i).value("TAG_ID").toString() == copyTag)
+        {
+            QSqlRecord record = tag2node.record(i);
+            record.setNull("TAG_COMMENT");
+            record.setValue("LOCKED", QString("0"));
+            record.setValue("REPLICATED", QString("0"));
+            record.setValue("TAG_NAME", newTagName);
+            record.setNull("DATE_LOCKED");
+            auto dt = QDateTime::currentMSecsSinceEpoch();
+            record.setValue("DATE_CREATED", QString::number(dt));
+
+            tag2node.insertRecord(-1, record);
+        }
+    }
+
+    //Edit tag2cache
+    QString rootTag = findAssociated( &tag2cache, QString("CHILDTAG"), parentTagName, QString("ROOTTAG"));
+    for(int i = 0; i < tag2cache.rowCount(); i++)
+    {
+        if(tag2cache.record(i).value("CHILDTAGID").toString() == copyTag
+            && tag2cache.record(i).value("ROOTTAG").toString() == rootTag)
+        {
+            tag2cache.record(i).setValue("CHILDTAG", newTagName);
+            tag2cache.record(i).setValue("CHILDTAGID", newTag);
+        }
+    }
+
+    ltag2ltag.submitAll();
+    tag2node.submitAll();
+    tag2cache.submitAll();
+
+    return newTag;
+}
 
 
 /*
@@ -1130,15 +1346,16 @@ void FaserDbSecondWindow::clearWindow()
 
 //Following fucntion is reimplementation of flags function
 //Reimplemented to return a non-editable flag for rows where data is locked
-Qt::ItemFlags FaserDbSecondWindow::flags(const QModelIndex &index) const
+Qt::ItemFlags testtest::flags(const QModelIndex &index) const
 {
 Qt::ItemFlags flags;
 
 //    flags = QAbstractItemModel::flags(index);
+    cout<<"hello\n";
     if(index.isValid())
     {
     }
-    QString tableName = m_parentWindow->selectedRowName();
+/*    QString tableName = m_parentWindow->selectedRowName();
     int row = m_tableView->selectionModel()->currentIndex().row();
     if( !tableName.endsWith("_DATA2TAG"))
     {
@@ -1152,6 +1369,10 @@ Qt::ItemFlags flags;
         }
     }
 
+    //Get current data id we are looking at
+    cout<<m_tableModel->record(row).value(0).toString().toStdString()<<endl;
+    cout<<row<<endl;
+
     QSqlTableModel tagTable;
     tagTable.setTable(tableName);
     tagTable.select();
@@ -1163,8 +1384,74 @@ Qt::ItemFlags flags;
 //        flags = Qt::ItemIsSelectable;
         return Qt::ItemIsSelectable;
     }
-
+*/
     return Qt::ItemIsEditable;
+
+
+}
+
+void FaserDbSecondWindow::click_cell(int row, int column)
+{
+    cout<<row<<column<<endl;
+}
+
+
+void FaserDbSecondWindow::setTagFilter(QString tagFilter)
+{
+    //Goal is to hide all currently shown rows with given associated tag in data table
+    QString currentNode = m_parentWindow->selectedRowName();
+    //Case where we are looking at the tag table
+    if(currentNode.endsWith("_DATA2TAG"))
+    {
+        QSqlTableModel data2tagtable;
+        data2tagtable.setTable(currentNode);
+        data2tagtable.select();
+        for(int i = 0; i < data2tagtable.rowCount(); i++)
+        {
+            if(data2tagtable.record(i).value(0).toString() != tagFilter)
+            {
+                m_tableView->hideRow(i);
+            }
+        }
+        return;
+    }
+
+    //Case where we are looking at data table
+    //Need to get a vector of data id's we will permit
+    vector<QString> nodeIds;
+    if(currentNode.endsWith("_DATA"))
+    {
+        currentNode.append("2TAG");
+    }
+    else
+    {
+        currentNode.append("_DATA2TAG");
+    }
+    QSqlTableModel data2TagTable;
+    data2TagTable.setTable(currentNode);
+    data2TagTable.select();
+
+    for(int i = 0; i < data2TagTable.rowCount(); i++)
+    {
+        if( data2TagTable.record(i).value(0).toString() == tagFilter)
+        {
+            nodeIds.push_back(data2TagTable.record(i).value(1).toString());
+        }
+    }
+
+    //Now match filter data ids with those on
+    for(int i = 0; i < m_tableModel->rowCount(); i++)
+    {
+        m_tableView->hideRow(i);
+        for(size_t j = 0; j < nodeIds.size(); j++)
+        {
+            if(nodeIds[j] == m_tableModel->record(i).value(0).toString())
+            {
+                m_tableView->showRow(i);
+                break;
+            }
+        }
+    }
 
 
 }

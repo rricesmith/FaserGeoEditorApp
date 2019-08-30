@@ -42,6 +42,7 @@ private:
     QMenu *m_subMenu;
     QAction *m_addBranch;
     QAction *m_addLeaf;
+    QAction *m_createTag;
     QAction *m_testTag1;
     QAction *m_testTag2;
     QString m_currentSelected;
@@ -53,7 +54,7 @@ private:
     void setTable();
     void addBranch();
     void addLeaf();
-    void testTagFunc(QAction *action);
+    void tagAction(QAction *action);
     bool isBranch(QString name);
 
     void contextMenu(const QPoint &point);
@@ -74,6 +75,9 @@ public:
     QString selectedRowName();
     void selectionChanged(const QItemSelection&, const QItemSelection&);
     bool isLocked(QString tagId);
+    QStringList findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search);
+    QString findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search);
+    QString createTag();
 
 
 
@@ -106,7 +110,8 @@ private:
     QDialogButtonBox *m_buttonBox;
     FaserDbMainWindow *m_parentWindow;
     QTableView *m_tableView;
-    Qt::ItemFlags flags(const QModelIndex &index) const;
+
+    QString m_rootTag;
 
 
 public:
@@ -119,7 +124,21 @@ public:
     void removeRow();
     void setWindow(QString tableName);
     void clearWindow();
+    void setTagFilter(QString tagFilter);
+
+    void click_cell(int row, int column);
+
+//    Qt::ItemFlags flags(const QModelIndex &index) const;
 
 };
+
+class testtest : public QSqlRelationalTableModel
+{
+
+    public:
+    Qt::ItemFlags flags(const QModelIndex &index) const;
+};
+
+//Qt::ItemFlags QAbstractItemModel::flags(const QModelIndex &index) const;
 
 // #endif
