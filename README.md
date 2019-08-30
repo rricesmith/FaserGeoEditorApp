@@ -2,9 +2,11 @@
 Qt Application for editing and maintaining the Faser GeoModel Sql Database
 
 
-Is subfile withing larger repository https://gitlab.cern.ch//dcasper/calypso
+These are subfiles within larger repository https://gitlab.cern.ch//dcasper/calypso
 
 Requires entire calypso repository to run/compile currently
+
+Replace files found in calypso/DetectorDescription/GeoModel/FaserGeoEditor/src with these files
 
 After following calypso readme to build all files:
 
