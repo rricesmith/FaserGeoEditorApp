@@ -45,6 +45,7 @@ private:
     QAction *m_createTag;
     QAction *m_testTag1;
     QAction *m_testTag2;
+    QAction *m_setRoot;
     QString m_currentSelected;
     vector<string> m_errors;
 
@@ -56,6 +57,7 @@ private:
     void addLeaf();
     void tagAction(QAction *action);
     bool isBranch(QString name);
+    void setRoot();
 
     void contextMenu(const QPoint &point);
 
@@ -63,6 +65,7 @@ private:
 
 public:
 
+    QString m_rootDisplayTag;
     void initializeWindow();
     FaserDbMainWindow(QWidget *parent = nullptr);
     QList<QStandardItem*> prepareRow(  const QString& name1, const QString& name2, const QString& name3, const QString& name4, const QString& name5);
@@ -78,6 +81,8 @@ public:
     QStringList findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString createTag();
+
+    void errorMessage(string message);
 
 
 
