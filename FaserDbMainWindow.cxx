@@ -13,6 +13,7 @@
 #include <QVariant>
 #include <QSqlField>
 #include <vector>
+#include <QtGui>
 
 using namespace std;
 
@@ -84,6 +85,15 @@ void FaserDbMainWindow::setDatabase( QSqlDatabase *db)
     m_hvsNodeTableModel = new QSqlTableModel(nullptr, m_database);
     m_hvsNodeTableModel->setTable("HVS_NODE");
     m_hvsNodeTableModel->select();
+    m_tag2node = new QSqlTableModel(nullptr, m_database);
+    m_tag2node->setTable("HVS_TAG2NODE");
+    m_tag2node->select();
+    m_tagcache = new QSqlTableModel(nullptr, m_database);
+    m_tagcache->setTable("HVS_TAGCACHE");
+    m_tagcache->select();
+    m_ltag2ltag = new QSqlTableModel(nullptr, m_database);
+    m_ltag2ltag->setTable("HVS_LTAG2LTAG");
+    m_ltag2ltag->select();
     return;
 }
 
@@ -114,10 +124,10 @@ void FaserDbMainWindow::initializeWindow()
     createStatusBar();
 
     QSqlTableModel *model = m_hvsNodeTableModel;
-    
+
     for(int i = 0; i < model->rowCount(); i++)
     {
-        if(model->record(i).value("PARENT_ID").toInt() == 0)
+        if(model->record(i).value("NODE_ID").toInt() == 0)
         {
             QList<QStandardItem*> topRow;
             for(int j = 0; j < 2; j++)
@@ -129,8 +139,6 @@ void FaserDbMainWindow::initializeWindow()
             root->appendRow(topRow);
         }
     }
-
-
 
     m_treeView->setModel(m_standardModel);
     m_treeView->expandAll();
@@ -368,9 +376,9 @@ void FaserDbMainWindow::rebuildTree()
     QSqlTableModel *model = m_hvsNodeTableModel;
 //    QSqlTableModel *model = m_secondWindow->tablePointer();
     
-    for(int i = 1; i < model->rowCount(); i++)
+    for(int i = 0; i < model->rowCount(); i++)
     {
-        if(model->record(i).value("PARENT_ID").toInt() == 0)
+        if(model->record(i).value("NODE_ID").toInt() == 0)
         {
             QList<QStandardItem*> topRow;
             for(int j = 0; j < 2; j++)
@@ -383,6 +391,7 @@ void FaserDbMainWindow::rebuildTree()
         }
     }
     
+
     m_treeView->expandAll();
     m_treeView->resizeColumnToContents(0);
     m_treeView->resizeColumnToContents(1);
@@ -548,10 +557,43 @@ void FaserDbMainWindow::createStatusBar()
 void FaserDbMainWindow::buildChildren( QList<QStandardItem*> *PRow, QString parent_id)
 {   
     QSqlTableModel *model = m_hvsNodeTableModel;
+    
+    QSqlTableModel tagcache;
+    tagcache.setTable("HVS_TAGCACHE");
+    tagcache.select();
 //    QSqlTableModel *model = m_secondWindow->tablePointer();
-    for(int i = 1; i < model->rowCount(); i++)
+
+    if(!m_rootDisplayTag.isNull())
+    {;
+        for(int j = 0; j < m_tagcache->rowCount(); j++)
+        {
+            if(m_tagcache->record(j).value("ROOTTAG").toString() == m_rootDisplayTag
+                && m_tagcache->record(j).value("CHILDNODE").toString() == PRow->at(1)->data(Qt::DisplayRole).toString())
+            {
+                if( isLocked(m_tagcache->record(j).value("CHILDTAGID").toString()))
+                {
+                    PRow->at(0)->setBackground(Qt::red);
+                }
+                else
+                {
+                    PRow->at(0)->setBackground(Qt::green);
+                }
+                break;
+            }
+        }
+    }
+    else
     {
-        if(model->record(i).value("PARENT_ID").toString() == parent_id)
+        //White doesnt seem to work, doing blue
+        PRow->at(0)->setBackground(QColor(Qt::white));
+    }
+
+    for(int i = 0; i < model->rowCount(); i++)
+    {
+        //Add new row if it is a child and part of our current root tag system if we have one
+        if(model->record(i).value("PARENT_ID").toString() == parent_id && model->record(i).value("NODE_ID").toInt() != 0
+            && (m_rootDisplayTag.isNull() || 
+            findAssociatedList( &tagcache, QString("ROOTTAG"), m_rootDisplayTag, QString("CHILDNODE")).contains(model->record(i).value("NODE_NAME").toString())))
         {  
             QList<QStandardItem*> *newRow = new QList<QStandardItem*>;
             for(int j = 0; j < 2; j++)
@@ -575,9 +617,35 @@ void FaserDbMainWindow::buildChildren( QList<QStandardItem*> *PRow, QString pare
 
                 newRow->first()->appendRow(dataRow);
                 newRow->first()->appendRow(data2tagRow);
-                
+            if(!m_rootDisplayTag.isNull())
+                {
+                    QSqlTableModel tagcache;
+                    tagcache.setTable("HVS_TAGCACHE");
+                    tagcache.select();
+                    for(int j = 0; j < tagcache.rowCount(); j++)
+                    {
+                        if(tagcache.record(j).value("ROOTTAG").toString() == m_rootDisplayTag
+                            && tagcache.record(j).value("CHILDNODE").toString() == newRow->at(1)->data(Qt::DisplayRole).toString())
+                        {
+                            if( isLocked(tagcache.record(j).value("CHILDTAGID").toString()))
+                            {
+                                newRow->at(0)->setBackground(Qt::red);
+                            }
+                            else
+                            {
+                                newRow->at(0)->setBackground(Qt::green);
+                            }
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    newRow->at(0)->setBackground(Qt::white);
+                }              
             }
 
+            
             PRow->first()->appendRow(*newRow);
         }
     }
@@ -902,10 +970,11 @@ void FaserDbMainWindow::setRoot()
         cout<<"Failed to get root tag to set\n";
         return;
     }
-    if( rootTag == QString("Clear root tag"))
+    if( rootTag == rootTags.last())
     {
         QString nullstr;
         m_rootDisplayTag = nullstr;
+        rebuildTree();
         return;
     }
     m_rootDisplayTag = rootTag;
@@ -1351,61 +1420,13 @@ void FaserDbSecondWindow::removeRow()
 
 FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidget* parent)
     : QWidget(parent)
-    , m_tableModel(new QSqlRelationalTableModel(nullptr, window_parent->returnDatabase()))
+    , m_tableModel(new FaserDbRelTableModel(nullptr, window_parent->returnDatabase(), this))
+    , m_sqlTableModel(new QSqlTableModel(nullptr, window_parent->returnDatabase()))
    /* , m_standardModel(new QStandardItemModel(this))*/
 {
 //    setCentralWidget(m_tableModel);
     m_tableView = nullptr;
     m_parentWindow = window_parent;
-
-/*    m_tableModel->setTable("HVS_NODE");
-    m_tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
-    m_tableModel->select();
-
-    m_tableModel->setHeaderData(0, Qt::Horizontal, tr("NODE_ID"));
-    m_tableModel->setHeaderData(1, Qt::Horizontal, tr("NODE_NAME"));
-    m_tableModel->setHeaderData(2, Qt::Horizontal, tr("PARENT_ID"));
-    m_tableModel->setHeaderData(3, Qt::Horizontal, tr("BRANCH_FLAG"));
-    m_tableModel->setHeaderData(4, Qt::Horizontal, tr("CODE_COMMENT"));    
-
-    m_tableView = new QTableView;
-    m_tableView->setModel(m_tableModel);
-    m_tableView->resizeColumnsToContents();
-    m_tableView->setMinimumWidth(500);
-
-    m_submitButton = new QPushButton(tr("Submit"));
-    m_submitButton->setDefault(true);
-    m_revertButton = new QPushButton(tr("&Revert"));
-    m_quitButton = new QPushButton(tr("Quit"));
-    m_addRowButton = new QPushButton(tr("&Add Row"));
-    m_addColumnButton = new QPushButton(tr("&Add Column"));
-    m_removeColumn = new QPushButton(tr("&Remove Column"));
-    m_removeRow = new QPushButton(tr("&Remove Row"));
-
-    m_buttonBox = new QDialogButtonBox(Qt::Vertical);
-    m_buttonBox->addButton(m_submitButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_revertButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_addRowButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_addColumnButton, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_removeColumn, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_removeRow, QDialogButtonBox::ActionRole);
-    m_buttonBox->addButton(m_quitButton, QDialogButtonBox::RejectRole);
-
-    connect(m_submitButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::submit);
-    connect(m_revertButton, &QPushButton::clicked, m_tableModel, &QSqlTableModel::revertAll);
-    connect(m_addRowButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::addRow);
-    connect(m_addColumnButton, &QPushButton::clicked, this,  &FaserDbSecondWindow::addColumn);
-    connect(m_removeColumn, &QPushButton::clicked, this,  &FaserDbSecondWindow::removeColumn);
-    connect(m_removeRow, &QPushButton::clicked, this, &FaserDbSecondWindow::removeRow);
-    connect(m_quitButton, &QPushButton::clicked, this, &FaserDbSecondWindow::close);
-
-    QHBoxLayout *mainLayout = new QHBoxLayout();
-    mainLayout->addWidget(m_tableView);
-    mainLayout->addWidget(m_buttonBox);
-    setLayout(mainLayout);
-
-    setWindowTitle(tr("Edit Table"));*/
-
 
     return;
 }
@@ -1425,6 +1446,9 @@ void FaserDbSecondWindow::setWindow(QString tableName)
     m_tableModel->setTable(tableName);
     m_tableModel->setEditStrategy(QSqlTableModel::OnManualSubmit);
 
+    m_sqlTableModel->setTable(tableName);
+    m_sqlTableModel->select();
+
     if( tableName.endsWith("_DATA2TAG") )
     {
         m_tableModel->setRelation(0, QSqlRelation("HVS_TAG2NODE", "TAG_ID", "TAG_NAME"));
@@ -1432,16 +1456,12 @@ void FaserDbSecondWindow::setWindow(QString tableName)
 
     m_tableModel->select();
 
-/*    m_tableModel->setHeaderData(0, Qt::Horizontal, tr("NODE_ID"));
-    m_tableModel->setHeaderData(1, Qt::Horizontal, tr("NODE_NAME"));
-    m_tableModel->setHeaderData(2, Qt::Horizontal, tr("PARENT_ID"));
-    m_tableModel->setHeaderData(3, Qt::Horizontal, tr("BRANCH_FLAG"));
-    m_tableModel->setHeaderData(4, Qt::Horizontal, tr("CODE_COMMENT"));    */
-
     m_tableView = new QTableView;
     m_tableView->setModel(m_tableModel);
     m_tableView->resizeColumnsToContents();
     m_tableView->setMinimumWidth(500);
+
+    m_tableView->setItemDelegate(new QSqlRelationalDelegate(m_tableView));
 
     m_submitButton = new QPushButton(tr("Submit"));
     m_submitButton->setDefault(true);
@@ -1476,6 +1496,55 @@ void FaserDbSecondWindow::setWindow(QString tableName)
 
     setWindowTitle(tableName);
 
+    //Code to deal with when we have  a tag filter set
+    if( !m_parentWindow->m_rootDisplayTag.isNull())
+    {
+        QSqlTableModel tagcache;
+        tagcache.setTable("HVS_TAGCACHE");
+        tagcache.select();
+        //Need to find the tag for our current table under given root tag
+        for(int i = 0; i < tagcache.rowCount(); i++)
+        {
+            if(tagcache.record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag
+            && tagcache.record(i).value("CHILDNODE").toString() == m_parentWindow->selectedRowName())
+            {
+                setTagFilter(tagcache.record(i).value("CHILDTAGID").toString());
+                break;
+            }
+        }
+    }
+
+    //Color the rows based on if they are associated with locked or unlocked tags
+
+    QBrush red;
+    red.setColor(Qt::red);
+    QBrush green;
+    green.setColor(Qt::green);
+    
+    if(tableName.endsWith("_DATA2TAG"))
+    {
+        QSqlTableModel tag2node;
+        tag2node.setTable("HVS_TAG2NODE");
+        tag2node.select();
+        for(int i = 0; i < m_tableModel->rowCount(); i++)
+        {
+            QModelIndex index = m_tableModel->index(i,0);
+            
+            if(m_parentWindow->isLocked( m_parentWindow->findAssociated( &tag2node, QString("TAG_NAME"), m_tableModel->record(i).value(0).toString(), QString("TAG_ID"))))
+            {
+                m_tableModel->setData(index, red, Qt::BackgroundRole);
+            }
+            else
+            {
+                m_tableModel->setData(index, green, Qt::BackgroundRole);
+            }
+        }
+    }
+
+    if(tableName.endsWith("_DATA"))
+    {
+
+    }
 
 }
 
@@ -1495,52 +1564,6 @@ void FaserDbSecondWindow::clearWindow()
         delete m_tableView;
         m_tableView = nullptr;
     }
-}
-
-//Following fucntion is reimplementation of flags function
-//Reimplemented to return a non-editable flag for rows where data is locked
-Qt::ItemFlags testtest::flags(const QModelIndex &index) const
-{
-Qt::ItemFlags flags;
-
-//    flags = QAbstractItemModel::flags(index);
-    cout<<"hello\n";
-    if(index.isValid())
-    {
-    }
-/*    QString tableName = m_parentWindow->selectedRowName();
-    int row = m_tableView->selectionModel()->currentIndex().row();
-    if( !tableName.endsWith("_DATA2TAG"))
-    {
-        if( tableName.endsWith("_DATA"))
-        {
-            tableName.append("2TAG");
-        }
-        else
-        {
-            tableName.append("_DATA2TAG");
-        }
-    }
-
-    //Get current data id we are looking at
-    cout<<m_tableModel->record(row).value(0).toString().toStdString()<<endl;
-    cout<<row<<endl;
-
-    QSqlTableModel tagTable;
-    tagTable.setTable(tableName);
-    tagTable.select();
-
-    QString tagId = tagTable.record(row).value(0).toString();
-
-    if( m_parentWindow->isLocked(tagId))
-    {
-//        flags = Qt::ItemIsSelectable;
-        return Qt::ItemIsSelectable;
-    }
-*/
-    return Qt::ItemIsEditable;
-
-
 }
 
 void FaserDbSecondWindow::click_cell(int row, int column)
@@ -1607,6 +1630,73 @@ void FaserDbSecondWindow::setTagFilter(QString tagFilter)
     }
 
 
+}
+
+FaserDbRelTableModel::FaserDbRelTableModel(QObject *parent = nullptr, QSqlDatabase db = QSqlDatabase(), FaserDbSecondWindow *secondWin = nullptr)
+{
+    m_secondWindow = secondWin;
+    (void)parent;
+    (void)db;
+}
+
+//Following function override recolors rows based off of if they are associated with locked rows
+//Red = locked, yellow = doubley locked, green = unlocked
+QVariant FaserDbRelTableModel::data(const QModelIndex &idx, int role) const
+{
+    QVariant var = QSqlRelationalTableModel::data(idx, role);
+
+    if( role == Qt::BackgroundRole)
+    {
+        //Case where this is a data2tag table
+        FaserDbMainWindow *main = m_secondWindow->m_parentWindow;
+        if(this->tableName().endsWith("_DATA2TAG"))
+        {
+            QString curtag = main->findAssociated(main->m_tagcache, QString("CHILDTAG"), this->record(idx.row()).value(0).toString(), QString("CHILDTAGID"));
+            return (main->isLocked(curtag)) ? QVariant(QColor(Qt::red)) : QVariant(QColor(Qt::green));
+        }
+        else //Case where it is a data table
+        {
+            //Need a list of associated tags with current data id
+            QString curDatId = this->record(idx.row()).value(0).toString();
+            QString dataName = this->tableName().replace("_DATA", "_DATA_ID");
+            QString tagName = this->tableName().replace("_DATA", "_TAG_ID");
+            QStringList tags = main->findAssociatedList(m_secondWindow->m_sqlTableModel, dataName, curDatId, tagName);
+            if(tags.size() == 0)
+            {
+                return QVariant(QColor(Qt::white));
+            }
+            else
+            {
+                if( tags.size() == 1)
+                {
+                    return (main->isLocked(tags.at(0))) ? QVariant(QColor(Qt::red)) : QVariant(QColor(Qt::green));
+                }
+                int numNotLocked = 0;
+                for(int i = 0; i < tags.size(); i++)
+                {
+                    if(!main->isLocked(tags.at(0)))
+                    {
+                        numNotLocked++;
+                    }
+                }
+                if(numNotLocked == 0)
+                {
+                    return QVariant(QColor(Qt::green));
+                }
+                else if(numNotLocked == 1)
+                {
+                    return QVariant(QColor(Qt::red));
+                }
+                else
+                {
+                    return QVariant(QColor(Qt::yellow));
+                }
+
+            }
+        }
+    }
+
+    return var;
 }
 
 

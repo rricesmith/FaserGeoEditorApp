@@ -22,6 +22,7 @@ QT_END_NAMESPACE
 
 
 class FaserDbSecondWindow;
+class FaserDbRelTableModel;
 
 class FaserDbMainWindow : public QMainWindow
 {
@@ -64,6 +65,9 @@ private:
 //    string obtainNamePopup();
 
 public:
+    QSqlTableModel *m_tag2node;
+    QSqlTableModel *m_tagcache;
+    QSqlTableModel *m_ltag2ltag;
 
     QString m_rootDisplayTag;
     void initializeWindow();
@@ -103,7 +107,9 @@ class FaserDbSecondWindow : public QWidget
 {
     Q_OBJECT
 private:
-    QSqlRelationalTableModel *m_tableModel;
+//    QSqlRelationalTableModel *m_tableModel;
+    FaserDbRelTableModel *m_tableModel;
+
 //    QSqlTableModel *m_tableModel; previously used, replaced with relational
     QPushButton *m_submitButton;
     QPushButton *m_revertButton;
@@ -113,13 +119,14 @@ private:
     QPushButton *m_removeColumn;
     QPushButton *m_removeRow;
     QDialogButtonBox *m_buttonBox;
-    FaserDbMainWindow *m_parentWindow;
     QTableView *m_tableView;
 
     QString m_rootTag;
 
 
 public:
+    QSqlTableModel *m_sqlTableModel;
+    FaserDbMainWindow *m_parentWindow;
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
     void submit();
 //    QSqlTableModel* tablePointer();
@@ -137,11 +144,14 @@ public:
 
 };
 
-class testtest : public QSqlRelationalTableModel
-{
 
+class FaserDbRelTableModel : public QSqlRelationalTableModel
+{
+    private:
+    FaserDbSecondWindow *m_secondWindow;
     public:
-    Qt::ItemFlags flags(const QModelIndex &index) const;
+    FaserDbRelTableModel(QObject *parent, QSqlDatabase db, FaserDbSecondWindow *secondWin);
+    QVariant data(const QModelIndex &idx, int role) const;
 };
 
 //Qt::ItemFlags QAbstractItemModel::flags(const QModelIndex &index) const;
