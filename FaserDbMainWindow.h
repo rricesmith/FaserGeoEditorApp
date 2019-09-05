@@ -44,9 +44,8 @@ private:
     QAction *m_addBranch;
     QAction *m_addLeaf;
     QAction *m_createTag;
-    QAction *m_testTag1;
-    QAction *m_testTag2;
     QAction *m_setRoot;
+    QAction *m_lockTag;
     QString m_currentSelected;
     vector<string> m_errors;
 
@@ -85,6 +84,7 @@ public:
     QStringList findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString createTag();
+    void lockTag(QString toLock = QString());
 
     void errorMessage(string message);
 
@@ -125,6 +125,7 @@ private:
 
 
 public:
+    QSqlTableModel *m_tagTable;
     QSqlTableModel *m_sqlTableModel;
     FaserDbMainWindow *m_parentWindow;
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
