@@ -119,12 +119,12 @@ private:
     QPushButton *m_removeColumn;
     QPushButton *m_removeRow;
     QDialogButtonBox *m_buttonBox;
-    QTableView *m_tableView;
 
     QString m_rootTag;
 
 
 public:
+    QTableView *m_tableView;
     QSqlTableModel *m_tagTable;
     QSqlTableModel *m_sqlTableModel;
     FaserDbMainWindow *m_parentWindow;
@@ -153,7 +153,10 @@ class FaserDbRelTableModel : public QSqlRelationalTableModel
     public:
     FaserDbRelTableModel(QObject *parent, QSqlDatabase db, FaserDbSecondWindow *secondWin);
     QVariant data(const QModelIndex &idx, int role) const;
+    Qt::ItemFlags flags(const QModelIndex &index) const;
 };
+
+
 
 //Qt::ItemFlags QAbstractItemModel::flags(const QModelIndex &index) const;
 

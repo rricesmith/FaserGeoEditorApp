@@ -1,5 +1,6 @@
 // main.cpp
 #include "FaserGeoEditorApp.h"
+#include <iostream>
 // #include <QTableView>
 // #include <QStringList>
 // #include <QSqlDatabase>
@@ -8,6 +9,12 @@
 
 int main(int argc, char *argv[])
 {
+    if(argc != 2)
+    {
+        std::cout<<"Error: Require two command line inputs only, first path to application, second path to database\n";
+        std::cout<<"Example: bin/FaserGeoEditor data/geomDB_sqlite\n";
+        return 0;
+    }
     FaserGeoEditorApp a(argc, argv);
     // QApplication a(argc, argv);
 

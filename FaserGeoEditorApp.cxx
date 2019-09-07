@@ -12,6 +12,11 @@ FaserGeoEditorApp::FaserGeoEditorApp(int& argc, char** argv)
     m_database.setDatabaseName(dbName);
     bool ok = m_database.open();
     std::cout << "Database open status: " << ok << std::endl;
+    if(!ok)
+    {
+        cout<<"Failed to open database, exiting...\n";
+        return;
+    }
     m_mainWindow.setDatabase(&m_database);
     m_mainWindow.initializeWindow();
 
