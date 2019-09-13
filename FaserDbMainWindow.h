@@ -7,6 +7,7 @@
 #include <QDialog>
 #include <QTableView>
 #include <QtSql>
+#include <QListWidget>
 
 
 // #include <QtGui/QWidget>
@@ -44,10 +45,11 @@ private:
     QAction *m_addBranch;
     QAction *m_addLeaf;
     QAction *m_createTag;
-    QAction *m_setRoot;
+//    QAction *m_setRoot;
     QAction *m_lockTag;
     QString m_currentSelected;
     vector<string> m_errors;
+    QListWidget *m_listWidget;
 
     void printErrors();
     void createActions();
@@ -77,9 +79,11 @@ public:
 //    void submit();
     QSqlDatabase returnDatabase();
     void rebuildTree();
+    void buildListWidget();
     bool verifyDatabase();
     QString selectedRowName();
     void selectionChanged(const QItemSelection&, const QItemSelection&);
+    void tagRowChanged(int currentRow);
     bool isLocked(QString tagId);
     QStringList findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search);
@@ -87,6 +91,8 @@ public:
     void lockTag(QString toLock = QString());
 
     void errorMessage(string message);
+
+    bool submitChanges(QSqlTableModel *table);
 
 
 
@@ -155,7 +161,6 @@ class FaserDbRelTableModel : public QSqlRelationalTableModel
     QVariant data(const QModelIndex &idx, int role) const;
     Qt::ItemFlags flags(const QModelIndex &index) const;
 };
-
 
 
 //Qt::ItemFlags QAbstractItemModel::flags(const QModelIndex &index) const;
