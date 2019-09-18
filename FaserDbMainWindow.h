@@ -39,7 +39,6 @@ private:
     QDialogButtonBox *m_buttonBox;*/
     FaserDbSecondWindow *m_secondWindow;
     QSqlTableModel *m_hvsNodeTableModel;
-    QMenu *m_viewMenu;
     QMenu *m_contextMenu;
     QMenu *m_subMenu;
     QAction *m_addBranch;
@@ -88,6 +87,7 @@ public:
     QStringList findAssociatedList(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString findAssociated(QSqlTableModel *table, QString known, QString kvalue, QString search);
     QString createTag();
+    QString createRootTag();
     void lockTag(QString toLock = QString());
 
     void errorMessage(string message);
@@ -135,6 +135,7 @@ public:
     QSqlTableModel *m_sqlTableModel;
     FaserDbMainWindow *m_parentWindow;
     FaserDbSecondWindow( FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
+    ~FaserDbSecondWindow();
     void submit();
 //    QSqlTableModel* tablePointer();
     void addRow();

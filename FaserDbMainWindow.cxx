@@ -168,11 +168,19 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
     QString current = m_currentSelected;    
     if( !current.endsWith("_DATA") && !current.endsWith("_DATA2TAG"))
     {
-        m_createTag = new QAction("Create Tag", m_contextMenu);
+        if( current == "FASER")
+        {
+            m_createTag = new QAction("Create Root Tag", m_contextMenu);
+            connect(m_createTag, &QAction::triggered, this, &FaserDbMainWindow::createRootTag);
+        }
+        else
+        {
+            m_createTag = new QAction("Create Tag", m_contextMenu);
+            connect(m_createTag, &QAction::triggered, this, &FaserDbMainWindow::createTag );
+        }
         m_lockTag = new QAction("Lock Tag", m_contextMenu);
         m_contextMenu->addAction(m_createTag);     
         m_contextMenu->addAction(m_lockTag);
-        connect(m_createTag, &QAction::triggered, this, &FaserDbMainWindow::createTag );
         //Following is a lambda function, lets us pass lockTag function pointer that has arguments to connect(using default arguments)
         connect(m_lockTag, &QAction::triggered, this, [this]()
         {
@@ -281,7 +289,7 @@ void FaserDbMainWindow::contextMenu(const QPoint &point)
     }*/
     if( !current.endsWith("_DATA") && !current.endsWith("_DATA2TAG"))
     {
-        disconnect(m_contextMenu, &QMenu::triggered, this, &FaserDbMainWindow::createTag);
+//        disconnect(m_contextMenu, &QMenu::triggered, this, &FaserDbMainWindow::createTag);
         delete m_createTag;
         delete m_lockTag;
     }
@@ -370,11 +378,13 @@ void FaserDbMainWindow::createActions()
     QAction *verifyAct = fileMenu->addAction(tr("&Verify Database"), this, &FaserDbMainWindow::verifyDatabase);
     verifyAct->setStatusTip(tr("Verify database adheres to standards"));
 
+    QAction *rootAct = fileMenu->addAction(tr("&Create new root"), this, &FaserDbMainWindow::createRootTag);
+    rootAct->setStatusTip(tr("Creates a new root tag for a new database version"));
+
     QAction *quitAct = fileMenu->addAction(tr("&Quit"), this, &QWidget::close);
     quitAct->setShortcuts(QKeySequence::Quit);
     quitAct->setStatusTip(tr("Quit the application"));
 
-    m_viewMenu = menuBar()->addMenu(tr("&View"));
 
 }
 
@@ -423,7 +433,8 @@ bool FaserDbMainWindow::verifyDatabase()
     bool ltag2ltagExists = false;
     bool tag2nodeExists = false;
     bool tagcacheExists = false;
-    vector<QString> masterTables;
+    vector<string> masterTables;
+    //Build a list of all tables in the database
     for(int i = 0; i < masterTable.rowCount(); i++)
     {
         QString tableName = masterTable.record(i).value(1).toString();
@@ -433,9 +444,10 @@ bool FaserDbMainWindow::verifyDatabase()
         tagcacheExists = nodeExists || (tableName.toStdString() == "HVS_tagcache") ? true : false;
         if(masterTable.record(i).value("type").toString() == "table")
         {
-            masterTables.push_back(tableName);        
+            masterTables.push_back(tableName.toStdString());        
         }
     }
+    //Check that main tables exist
     if( !(ltag2ltagExists && nodeExists && tag2nodeExists && tagcacheExists))
     {
         if(!nodeExists)
@@ -533,7 +545,154 @@ bool FaserDbMainWindow::verifyDatabase()
     }
 
     //Now we need to verify that HVS_NODE is built properly
+    //Ensure a _DATA and _DATA2TAG table for each leaf
+    //Check no hanging children or extraneous tables
 
+    //First check branch/leaf structure in hvs_node
+    vector<int> parent_ids;
+    for(int i = 0; i < hvsNodeTable.rowCount(); i++)
+    {
+        if( hvsNodeTable.record(i).value("BRANCH_FLAG").toString() == "1")
+        {
+            parent_ids.push_back(hvsNodeTable.record(i).value("NODE_ID").toString().toInt());
+        }
+    }
+    for(int i = 0; i < hvsNodeTable.rowCount(); i++)
+    {
+        QString nodeName = hvsNodeTable.record(i).value("NODE_NAME").toString();
+        QString parentId = hvsNodeTable.record(i).value("PARENT_ID").toString();
+        QString nodeId = hvsNodeTable.record(i).value("NODE_ID").toString();
+        if( nodeId != "0" && std::find(parent_ids.begin(), parent_ids.end(), parentId.toInt()) == parent_ids.end())
+        {
+            string err = "Parent of ";
+            err += hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+            err += "is not a branch";
+            m_errors.push_back(err);
+        }
+
+        //Now do different logic on branch or leaves
+        //Branches first, ensure there are no _DATA or _DATA2TAG tables for it
+        if(hvsNodeTable.record(i).value("BRANCH_FLAG").toString() == "1")
+        {
+            string check_data = hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+            check_data += "_DATA";
+            transform(check_data.begin(), check_data.end(), check_data.begin(), ::toupper);
+            string check_data2tag = hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+            check_data2tag += "_DATA2TAG";
+            transform(check_data2tag.begin(), check_data2tag.end(), check_data2tag.begin(), ::toupper);
+            if( std::find(masterTables.begin(), masterTables.end(), check_data) != masterTables.end())
+            {
+                string err = "Found _DATA table for branch node in HVS_NODE : ";
+                err += check_data;
+                m_errors.push_back(err);
+            }
+            if( std::find(masterTables.begin(), masterTables.end(), check_data2tag) != masterTables.end())
+            {
+                string err = "Found _DATA2TAG table for branch node in HVS_NODE : ";
+                err += check_data2tag;
+                m_errors.push_back(err);
+            }
+        }   
+        else //Checking leaf
+        {
+            string check_data = hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+            check_data += "_DATA";
+            transform(check_data.begin(), check_data.end(), check_data.begin(), ::toupper);
+            string check_data2tag = hvsNodeTable.record(i).value("NODE_NAME").toString().toStdString();
+            check_data2tag += "_DATA2TAG";
+            transform(check_data2tag.begin(), check_data2tag.end(), check_data2tag.begin(), ::toupper);
+
+            vector<int> leafDataIds;
+            vector<int> leafTagIds;
+
+            auto it = std::find(masterTables.begin(), masterTables.end(), check_data);
+            if( it != masterTables.end())
+            {
+                //Remove the found table from master list vector if found
+                masterTables.erase( it);
+                //Also build list of data id's
+                QSqlTableModel leaf;
+                leaf.setTable(QString::fromStdString(check_data));
+                leaf.select();
+                for(int i = 0; i < leaf.rowCount(); i++)
+                {
+                    int dataid = leaf.record(i).value(0).toString().toInt();
+                    if( std::find(leafDataIds.begin(), leafDataIds.end(), dataid) == leafDataIds.end())
+                    {
+                        leafDataIds.push_back(dataid);
+                    }
+                    else
+                    {
+                        string err = "Repeated data tag in ";
+                        err += check_data;
+                        err += " of ";
+                        err += std::to_string(dataid);
+                        m_errors.push_back(err);
+                    }
+                }
+            }
+            else
+            {
+                string err = "Missing _DATA table ";
+                err += check_data;
+                m_errors.push_back(err);
+            }
+
+            it = std::find(masterTables.begin(), masterTables.end(), check_data2tag);
+            if( it != masterTables.end())
+            {
+                //Erase from list of master tables
+                masterTables.erase( it);
+                //Also check that ever data id in _data has a tag
+                //And that every tag is associated with this table in tag2node
+                QSqlTableModel leaf;
+                leaf.setTable(QString::fromStdString(check_data2tag));
+                leaf.select();
+
+                for(int i = 0; i < leaf.rowCount(); i++)
+                {
+                    int data = leaf.record(i).value(1).toString().toInt();
+                    int tag = leaf.record(i).value(0).toString().toInt();
+                    if(std::find(leafDataIds.begin(), leafDataIds.end(), data) == leafDataIds.end())
+                    {
+                        string err = "No reference to data id ";
+                        err += std::to_string(data);
+                        err += " in ";
+                        err += check_data2tag;
+                        m_errors.push_back(err);
+                    }
+                    if(std::find(leafTagIds.begin(), leafTagIds.end(), tag) != leafTagIds.end())
+                    {
+                        leafTagIds.push_back(tag);
+                    }
+                }
+
+                for(size_t i = 0; i < leafTagIds.size(); i++)
+                {
+                    if( nodeId != findAssociated( &hvsTag2NodeTable, QString("TAG_ID"), QString(leafTagIds[i]), QString("NODE_ID")))
+                    {
+                        string err = "Tag of ";
+                        err += std::to_string(leafTagIds[i]);
+                        err += "not associated with the node ";
+                        err += nodeName.toStdString();
+                        m_errors.push_back(err);
+                    }
+                }
+
+            }
+            else
+            {
+                string err = "Missing _DATA2TAG table ";
+                err += check_data2tag;
+                m_errors.push_back(err);
+            }
+            
+            
+        }
+         
+
+    }
+    
 
 
     if(m_errors.empty())
@@ -542,6 +701,8 @@ bool FaserDbMainWindow::verifyDatabase()
     }
     else
     {
+        string err = "Errors were found in database verification - check terminal for log";
+        errorMessage(err);
         printErrors();
         return false;
     }
@@ -695,6 +856,27 @@ void FaserDbMainWindow::addBranch()
     {
         cout<<"Cannot add branch to a leaf node\n";
         return;
+    }
+
+    //Can't add branch to a locked table
+    if( !m_rootDisplayTag.isNull())
+    {
+        for(int i = 0; i < m_tagcache->rowCount(); i++)
+        {
+            if(m_tagcache->record(i).value("ROOTTAG").toString() == m_rootDisplayTag
+                && m_tagcache->record(i).value("CHILDNODE").toString() == selectedRowName())
+            {
+                if(isLocked(m_tagcache->record(i).value("CHILDTAGID").toString()))
+                {
+                    errorMessage("Cannot add branch to a locked node");
+                    return;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
     }
 
     //Get name of table we are creating
@@ -903,6 +1085,27 @@ void FaserDbMainWindow::addLeaf()
     {
         cout<<"Cannot add leaf to a leaf node\n";
         return;
+    }
+
+    //Can't add branch to a locked table
+    if( !m_rootDisplayTag.isNull())
+    {
+        for(int i = 0; i < m_tagcache->rowCount(); i++)
+        {
+            if(m_tagcache->record(i).value("ROOTTAG").toString() == m_rootDisplayTag
+                && m_tagcache->record(i).value("CHILDNODE").toString() == selectedRowName())
+            {
+                if(isLocked(m_tagcache->record(i).value("CHILDTAGID").toString()))
+                {
+                    errorMessage("Cannot add leaf to a locked node");
+                    return;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
     }
 
     //Gets name of new table
@@ -1221,6 +1424,184 @@ QString FaserDbMainWindow::findAssociated(QSqlTableModel *table, QString known, 
     return found;
 }
 
+QString FaserDbMainWindow::createRootTag()
+{
+    //This function is only called in case where we right clicked or selected from menu
+    //Creates a new root tag, similar to making a new version of the database
+
+    QString nodeGettingTagName = QString("FASER");
+    QString nodeGettingTagId = QString("0");
+    QString newTag;
+    QString nullTag;
+
+    bool ok = false;
+
+
+    int tagAvailable = 0;
+    for(int i = 0; i < m_tag2node->rowCount(); i++)
+    {
+        tagAvailable = (m_tag2node->record(i).value("TAG_ID").toString().toInt() > tagAvailable) ? m_tag2node->record(i).value("TAG_ID").toString().toInt() : tagAvailable;
+    }
+    tagAvailable++;
+    newTag = QString::number(tagAvailable);
+
+    QString rootTag = QInputDialog::getItem(this, tr("QInputDialog::getText()"), tr("New Root Tag name:"),
+        findAssociatedList( m_tag2node, QString("NODE_ID"), nodeGettingTagId, QString("TAG_NAME")), 0, true, &ok);
+    if( !ok)
+    {
+        cout<<"Error in name given/closed window\n";
+        return nullTag;
+    }
+
+    //Prevent repeated root name
+    for(int i = 0; i < m_tagcache->rowCount(); i++)
+    {
+        if(m_tagcache->record(i).value(0).toString() == rootTag)
+        {
+            errorMessage("Root tag name input is already taken");
+            return nullTag;
+        }
+    }
+
+    //Get tag we will make this new one as a replica of
+    QStringList replicateList;
+    for(int i = 0; i < m_tagcache->rowCount(); i++)
+    {
+        if( !replicateList.contains(m_tagcache->record(i).value("ROOTTAG").toString()))
+        {
+            replicateList.push_back(m_tagcache->record(i).value("ROOTTAG").toString());
+        }
+    }
+    QString replicateTagName = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Root tag to initially copy:"), replicateList, 0, false, &ok);
+    if( !ok)
+    {
+        cout<<"Failed to get tag to replicate to/closed window\n";
+        return nullTag;
+    }
+
+    QString replicateTagId = findAssociated(m_tag2node, QString("TAG_NAME"), replicateTagName, QString("TAG_ID"));
+
+    //Get list of children who will be under our new tag so we put proper children under our new tag
+    QStringList childTags = findAssociatedList( m_tagcache, tr("ROOTTAG"), replicateTagName, tr("CHILDTAG"));
+
+    //Valid root tag name
+    //Make appropriate row inserts in each table
+    //Get highest tag value then increment
+    //Edit ltag2ltag
+    for(int i = 0; i < m_ltag2ltag->rowCount(); i++)
+    {
+        if( m_ltag2ltag->record(i).value("PARENT_NODE").toString() == "0" 
+            && m_ltag2ltag->record(i).value("PARENT_TAG").toString() == replicateTagId)
+        {
+            QSqlRecord record = m_ltag2ltag->record(i);
+            record.setValue("PARENT_TAG", newTag);
+
+            m_ltag2ltag->insertRecord(-1, record);
+        }
+    }
+    submitChanges(m_ltag2ltag);
+/*        if(!(m_ltag2ltag->database().transaction() && m_ltag2ltag->submitAll() && m_ltag2ltag->database().commit()))
+    {
+        cout<<"Error editing ltag2ltag when inserting new root tag\n Error: ";
+        cout<<m_ltag2ltag->database().lastError().text().toStdString()<<endl;
+    }*/
+
+    //Edit tag2node
+    if(!( m_tag2node->database().transaction()))
+    {
+        cout<<"Error starting transaction : "<<m_tag2node->database().lastError().text().toStdString()<<endl;
+    }
+    for(int i = 0; i < m_tag2node->rowCount(); i++)
+    {
+        if(  m_tag2node->record(i).value("NODE_ID").toString() == "0")
+        {
+/*                QSqlRecord record = m_tag2node->record(i);
+            record.setValue("TAG_NAME", rootTag);
+            record.setValue("TAG_ID", newTag);
+            record.setNull("TAG_COMMENT");
+            record.setValue("LOCKED", QString("0"));
+            record.setValue("REPLICATED", QString("0"));
+            auto dt = QDateTime::currentMSecsSinceEpoch();
+            record.setValue("DATE_CREATED", QString::number(dt));
+            record.setNull("DATE_LOCKED");
+
+            if(!m_tag2node->insertRecord(-1, record))
+            {
+                cout<<"failed to insert tag2node record\n";
+                cout<<m_tag2node->lastError().text().toStdString()<<endl;
+            }
+            int row = m_tag2node->rowCount();
+            if(!m_tag2node->insertRow(row))
+            {
+                cout<<"failed to insert row\n";
+            }             
+            m_tag2node->record(row).setValue("TAG_NAME", rootTag);
+            m_tag2node->record(row).setValue("TAG_ID", newTag);
+            m_tag2node->record(row).setNull("TAG_COMMENT");
+            m_tag2node->record(row).setValue("LOCKED", QString("0"));
+            m_tag2node->record(row).setValue("REPLICATED", QString("0"));
+            auto dt = QDateTime::currentMSecsSinceEpoch();
+            m_tag2node->record(row).setValue("DATE_CREATED", QString::number(dt));
+            m_tag2node->record(row).setNull("DATE_LOCKED");*/
+
+            QSqlQuery query;
+            query.prepare("INSERT INTO HVS_TAG2NODE (NODE_ID, TAG_NAME, TAG_ID, TAG_COMMENT, LOCKED, REPLICATED, DATE_CREATED, DATE_LOCKED, SUPPORTED)"
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            query.bindValue(0, "0");
+            query.bindValue(1, rootTag);
+            query.bindValue(2, newTag);
+            query.bindValue(3, QString());
+            query.bindValue(4, "0");
+            query.bindValue(5, "0");
+            auto dt = QDateTime::currentMSecsSinceEpoch();
+            query.bindValue(6, QString::number(dt));
+            query.bindValue(7, QString());
+            query.bindValue(8, m_tag2node->record(i).value("SUPPORTED").toString());
+            if(!query.exec())
+            {
+                cout<<query.lastError().text().toStdString()<<endl;
+            }
+            m_tag2node->select();
+
+            break;
+        }
+    }
+//        submitChanges(m_tag2node);
+    if(!(/*m_tag2node->database().transaction() &&*/ m_tag2node->submitAll() && m_tag2node->database().commit()))
+    {
+        cout<<"Error editing tag2node when inserting new root tag\n Error: ";
+        cout<<m_tag2node->database().lastError().text().toStdString()<<endl;
+    }
+
+    //Edit tagcache
+    for(int i = 0; i < m_tagcache->rowCount(); i++)
+    {
+        if(m_tagcache->record(i).value("ROOTTAG").toString() == replicateTagName)
+        {
+            QSqlRecord record = m_tagcache->record(i);
+            record.setValue("ROOTTAG", rootTag);
+            if(m_tagcache->record(i).value("CHILDNODE").toString() == QString("FASER"))
+            {
+                record.setValue("CHILDTAG", rootTag);
+                record.setValue("CHILDTAGID", newTag);
+            }
+
+            m_tagcache->insertRecord(-1, record);
+        }
+    }
+    submitChanges(m_tagcache);
+/*        if(!( m_tagcache->database().transaction() && m_tagcache->submitAll() && m_tagcache->database().commit()))
+    {
+        cout<<"Error editing tagcache when inserting new root tag\n Error: ";
+        cout<<m_tagcache->database().lastError().text().toStdString()<<endl;
+    }*/
+    buildListWidget();
+    m_rootDisplayTag = rootTag;
+    m_listWidget->setCurrentRow(m_listWidget->count()-1);
+    return newTag;
+
+}
+
 QString FaserDbMainWindow::createTag()
 {
     //This function only works if used on root, or on a node whose parent has a unlocked tag
@@ -1241,166 +1622,7 @@ QString FaserDbMainWindow::createTag()
     tagAvailable++;
     newTag = QString::number(tagAvailable);
 
-    //Case where we are making a root tag
-    if(nodeGettingTagName == "FASER")
-    {
 
-        QString rootTag = QInputDialog::getItem(this, tr("QInputDialog::getText()"), tr("New Root Tag name:"),
-            findAssociatedList( m_tag2node, QString("NODE_ID"), nodeGettingTagId, QString("TAG_NAME")), 0, true, &ok);
-        if( !ok)
-        {
-            cout<<"Error in name given/closed window\n";
-            return nullTag;
-        }
-
-        //Prevent repeated root name
-        for(int i = 0; i < m_tagcache->rowCount(); i++)
-        {
-            if(m_tagcache->record(i).value(0).toString() == rootTag)
-            {
-                QMessageBox messageBox;
-                messageBox.critical(0, "Error", "Root tag name input is already taken");
-                messageBox.setFixedSize(500,200);
-                messageBox.exec();
-                return nullTag;
-            }
-        }
-
-        //Get tag we will make this new one as a replica of
-        QStringList replicateList;
-        for(int i = 0; i < m_tagcache->rowCount(); i++)
-        {
-            if( !replicateList.contains(m_tagcache->record(i).value("ROOTTAG").toString()))
-            {
-                replicateList.push_back(m_tagcache->record(i).value("ROOTTAG").toString());
-            }
-        }
-        QString replicateTagName = QInputDialog::getItem(this, tr("QInputDialog::getItem()"), tr("Root tag to initially copy:"), replicateList, 0, false, &ok);
-        if( !ok)
-        {
-            cout<<"Failed to get tag to replicate to/closed window\n";
-            return nullTag;
-        }
-
-        QString replicateTagId = findAssociated(m_tag2node, QString("TAG_NAME"), replicateTagName, QString("TAG_ID"));
-
-        //Get list of children who will be under our new tag so we put proper children under our new tag
-        QStringList childTags = findAssociatedList( m_tagcache, tr("ROOTTAG"), replicateTagName, tr("CHILDTAG"));
-
-        //Valid root tag name
-        //Make appropriate row inserts in each table
-        //Get highest tag value then increment
-        //Edit ltag2ltag
-        for(int i = 0; i < m_ltag2ltag->rowCount(); i++)
-        {
-            if( m_ltag2ltag->record(i).value("PARENT_NODE").toString() == "0" 
-                && m_ltag2ltag->record(i).value("PARENT_TAG").toString() == replicateTagId)
-            {
-                QSqlRecord record = m_ltag2ltag->record(i);
-                record.setValue("PARENT_TAG", newTag);
-
-                m_ltag2ltag->insertRecord(-1, record);
-            }
-        }
-        submitChanges(m_ltag2ltag);
-/*        if(!(m_ltag2ltag->database().transaction() && m_ltag2ltag->submitAll() && m_ltag2ltag->database().commit()))
-        {
-            cout<<"Error editing ltag2ltag when inserting new root tag\n Error: ";
-            cout<<m_ltag2ltag->database().lastError().text().toStdString()<<endl;
-        }*/
-
-        //Edit tag2node
-        if(!( m_tag2node->database().transaction()))
-        {
-            cout<<"Error starting transaction : "<<m_tag2node->database().lastError().text().toStdString()<<endl;
-        }
-        for(int i = 0; i < m_tag2node->rowCount(); i++)
-        {
-            if(  m_tag2node->record(i).value("NODE_ID").toString() == "0")
-            {
-/*                QSqlRecord record = m_tag2node->record(i);
-                record.setValue("TAG_NAME", rootTag);
-                record.setValue("TAG_ID", newTag);
-                record.setNull("TAG_COMMENT");
-                record.setValue("LOCKED", QString("0"));
-                record.setValue("REPLICATED", QString("0"));
-                auto dt = QDateTime::currentMSecsSinceEpoch();
-                record.setValue("DATE_CREATED", QString::number(dt));
-                record.setNull("DATE_LOCKED");
-
-                if(!m_tag2node->insertRecord(-1, record))
-                {
-                    cout<<"failed to insert tag2node record\n";
-                    cout<<m_tag2node->lastError().text().toStdString()<<endl;
-                }
-                int row = m_tag2node->rowCount();
-                if(!m_tag2node->insertRow(row))
-                {
-                    cout<<"failed to insert row\n";
-                }             
-                m_tag2node->record(row).setValue("TAG_NAME", rootTag);
-                m_tag2node->record(row).setValue("TAG_ID", newTag);
-                m_tag2node->record(row).setNull("TAG_COMMENT");
-                m_tag2node->record(row).setValue("LOCKED", QString("0"));
-                m_tag2node->record(row).setValue("REPLICATED", QString("0"));
-                auto dt = QDateTime::currentMSecsSinceEpoch();
-                m_tag2node->record(row).setValue("DATE_CREATED", QString::number(dt));
-                m_tag2node->record(row).setNull("DATE_LOCKED");*/
-
-                QSqlQuery query;
-                query.prepare("INSERT INTO HVS_TAG2NODE (NODE_ID, TAG_NAME, TAG_ID, TAG_COMMENT, LOCKED, REPLICATED, DATE_CREATED, DATE_LOCKED, SUPPORTED)"
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                query.bindValue(0, "0");
-                query.bindValue(1, rootTag);
-                query.bindValue(2, newTag);
-                query.bindValue(3, QString());
-                query.bindValue(4, "0");
-                query.bindValue(5, "0");
-                auto dt = QDateTime::currentMSecsSinceEpoch();
-                query.bindValue(6, QString::number(dt));
-                query.bindValue(7, QString());
-                query.bindValue(8, m_tag2node->record(i).value("SUPPORTED").toString());
-                if(!query.exec())
-                {
-                    cout<<query.lastError().text().toStdString()<<endl;
-                }
-                m_tag2node->select();
-
-                break;
-            }
-        }
-//        submitChanges(m_tag2node);
-        if(!(/*m_tag2node->database().transaction() &&*/ m_tag2node->submitAll() && m_tag2node->database().commit()))
-        {
-            cout<<"Error editing tag2node when inserting new root tag\n Error: ";
-            cout<<m_tag2node->database().lastError().text().toStdString()<<endl;
-        }
-
-        //Edit tagcache
-        for(int i = 0; i < m_tagcache->rowCount(); i++)
-        {
-            if(m_tagcache->record(i).value("ROOTTAG").toString() == replicateTagName)
-            {
-                QSqlRecord record = m_tagcache->record(i);
-                record.setValue("ROOTTAG", rootTag);
-                if(m_tagcache->record(i).value("CHILDNODE").toString() == QString("FASER"))
-                {
-                    record.setValue("CHILDTAG", rootTag);
-                    record.setValue("CHILDTAGID", newTag);
-                }
-
-                m_tagcache->insertRecord(-1, record);
-            }
-        }
-        submitChanges(m_tagcache);
-/*        if(!( m_tagcache->database().transaction() && m_tagcache->submitAll() && m_tagcache->database().commit()))
-        {
-            cout<<"Error editing tagcache when inserting new root tag\n Error: ";
-            cout<<m_tagcache->database().lastError().text().toStdString()<<endl;
-        }*/
-        buildListWidget();
-        return newTag;
-    }
 
     //Case of adding tag to non root
     //Get list of unlocked parents
@@ -1416,10 +1638,7 @@ QString FaserDbMainWindow::createTag()
     //Case of no unlocked parent tags, can't add tag
     if(parentTags.empty())
     {
-        QMessageBox messageBox;;
-        messageBox.critical(0, "Error", "No unlocked parent tags to choose from");
-        messageBox.setFixedSize(500,200);
-        messageBox.exec();
+        errorMessage("No unlocked parent tags to choose from");
         return nullTag;
     }
 
@@ -1673,10 +1892,10 @@ bool FaserDbMainWindow::submitChanges(QSqlTableModel *table)
 void FaserDbMainWindow::errorMessage(string message)
 {
 
-    QMessageBox messageBox;
-    messageBox.critical(0, "Error", QString::fromStdString(message));
-    messageBox.setFixedSize(500,200);
-    messageBox.exec();
+//    QMessageBox messageBox;
+    QMessageBox::critical(0, "Error", QString::fromStdString(message));
+//    messageBox.setFixedSize(500,200);
+//    messageBox.exec();
 }
 
 void FaserDbMainWindow::buildListWidget()
@@ -1742,13 +1961,24 @@ void FaserDbSecondWindow::submit()
 
 void FaserDbSecondWindow::addRow()
 {
+/*    QSqlRecord record;
+    record = m_tableModel->record(0);
+    if(!m_parentWindow->m_rootDisplayTag.isNull())
+    {
+        for(int i = 0; i < m_parentWindow->m_tagcache->rowCount(); i++)
+        {
+            if(m_parentWindow->m_tagcache->record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag
+                && m_parentWindow->m_tagcache->record(i).value("CHILDNODE").toString() == m_parentWindow->m_rootDisplayTag)
+        }
+        record.setValue(0, )
+    }*/
     if(m_tableView->selectionModel()->currentIndex().isValid())
     {
         m_tableModel->insertRows(m_tableView->selectionModel()->currentIndex().row() + 1, 1);
     }
     else
     {
-        //This executes only if there was no valid index, and then puts a new row at beginning
+        //This executes only if there was no valid index, and then puts a new row at the end
         m_tableModel->insertRows(m_tableModel->rowCount(), 1);
     }
 }
@@ -2088,6 +2318,12 @@ void FaserDbSecondWindow::setTagFilter(QString tagFilter)
 
 }
 
+//Destructor to delete temp tags table used for our relational table model
+FaserDbSecondWindow::~FaserDbSecondWindow()
+{
+    clearWindow();
+}
+
 FaserDbRelTableModel::FaserDbRelTableModel(QObject *parent = nullptr, QSqlDatabase db = QSqlDatabase(), FaserDbSecondWindow *secondWin = nullptr)
 {
     m_secondWindow = secondWin;
@@ -2130,18 +2366,15 @@ QVariant FaserDbRelTableModel::data(const QModelIndex &idx, int role) const
                 int numNotLocked = 0;
                 for(int i = 0; i < tags.size(); i++)
                 {
-                    if(!main->isLocked(tags.at(0)))
+                    if(main->isLocked(tags.at(0)))
                     {
-                        numNotLocked++;
+                        return QVariant(QColor(Qt::red));
                     }
+                    numNotLocked++;
                 }
-                if(numNotLocked == 0)
+                if(numNotLocked == 1)
                 {
                     return QVariant(QColor(Qt::green));
-                }
-                else if(numNotLocked == 1)
-                {
-                    return QVariant(QColor(Qt::red));
                 }
                 else
                 {
@@ -2172,12 +2405,15 @@ Qt::ItemFlags flags;
     }
     else //If data, want associated tag number
     {
-        tagId = m_secondWindow->m_parentWindow->findAssociated(m_secondWindow->m_parentWindow->m_tag2node, QString("TAG_NAME"), 
-            record(row).value(0).toString(), QString("TAG_ID"));
+        if( !record(row).value(0).toString().isNull())
+        {
+            tagId = m_secondWindow->m_parentWindow->findAssociated(m_secondWindow->m_parentWindow->m_tag2node, QString("TAG_NAME"), 
+                record(row).value(0).toString(), QString("TAG_ID"));
+        }
     }
 
 
-    if( !m_secondWindow->m_parentWindow->isLocked(tagId))
+    if( !m_secondWindow->m_parentWindow->isLocked(tagId) || tagId.isNull())
     {
         flags |= Qt::ItemIsEditable;
     }
