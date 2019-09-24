@@ -1277,8 +1277,8 @@ void FaserDbMainWindow::addLeaf()
     }
 
     //This will create the _DATA and _DATA2TAG tables in the database
-    QString dataname = text;
-    QString tagname = text;
+    QString dataname = text.toUpper();
+    QString tagname = text.toUpper();
     dataname.append("_DATA");
     tagname.append("_DATA2TAG");
 
@@ -1574,6 +1574,7 @@ QString FaserDbMainWindow::createRootTag()
     }
 
     //Edit tagcache
+    m_tagcache->select();
     for(int i = 0; i < m_tagcache->rowCount(); i++)
     {
         if(m_tagcache->record(i).value("ROOTTAG").toString() == replicateTagName)
@@ -1786,6 +1787,28 @@ QString FaserDbMainWindow::createTag()
         cout<<"Error editing tagcache when inserting tag\n Error: ";
         cout<<m_tagcache->database().lastError().text().toStdString()<<endl;
     }
+
+    //If we are working on a leaf node, also need to add new rows into correponding _DATA2TAG tables
+    QString name = selectedRowName();
+    name.append("_DATA2TAG");
+    QSqlTableModel data2tag;
+    data2tag.setTable(name);
+    data2tag.select();
+
+    for(int i = 0; i <data2tag.rowCount(); i++)
+    {
+        if(data2tag.record(i).value(0).toString() == copyTag)
+        {
+            QSqlRecord record = data2tag.record(i);
+            record.setValue(0, newTag);
+
+            data2tag.insertRecord(-1, record);
+        }
+    }
+    submitChanges(&data2tag);
+
+
+
     rebuildTree();
     return newTag;
 }
@@ -1922,12 +1945,14 @@ void FaserDbMainWindow::tagRowChanged(int currentRow)
     {
         QString nullstr;
         m_rootDisplayTag = nullstr;
+        m_secondWindow->clearWindow();
         rebuildTree();
         return;
     }
     else
     {
         m_rootDisplayTag = m_listWidget->item(currentRow)->text();
+        m_secondWindow->clearWindow();
         rebuildTree();
         return;
     }
@@ -1949,7 +1974,8 @@ void FaserDbSecondWindow::submit()
     if(m_tableModel->submitAll())
     {
         m_tableModel->database().commit();
-        m_parentWindow->rebuildTree();
+//This function should only be called when we edit _DATA or _DATA2TAG, so no need to rebuild
+//        m_parentWindow->rebuildTree();
     }
     else
     {
@@ -1972,6 +1998,36 @@ void FaserDbSecondWindow::addRow()
         }
         record.setValue(0, )
     }*/
+
+    //Cant add row if its to a locked table
+    if(!m_parentWindow->m_rootDisplayTag.isNull())
+    {
+        QString nodeName = m_parentWindow->selectedRowName();
+        if(nodeName.endsWith("_DATA"))
+        {
+            nodeName.remove("_DATA");
+        }
+        else
+        {
+            nodeName.remove("_DATA2TAG");
+        }
+        for(int i = 0; i < m_parentWindow->m_tagcache->rowCount(); i++)
+        {
+            if(m_parentWindow->m_tagcache->record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag
+                && m_parentWindow->m_tagcache->record(i).value("CHILDNODE").toString() == nodeName)
+            {
+                if(m_parentWindow->isLocked(m_parentWindow->m_tagcache->record(i).value("CHILDTAGID").toString()))
+                {
+                    m_parentWindow->errorMessage("Table is currently associated with locked tag");
+                    return;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+    }
     if(m_tableView->selectionModel()->currentIndex().isValid())
     {
         m_tableModel->insertRows(m_tableView->selectionModel()->currentIndex().row() + 1, 1);
@@ -1985,6 +2041,33 @@ void FaserDbSecondWindow::addRow()
 
 void FaserDbSecondWindow::addColumn()
 {
+    //Cant add column if any of the associated tags are locked
+    QString nodeName = m_parentWindow->selectedRowName();
+    if(nodeName.endsWith("_DATA"))
+    {
+        nodeName.remove("_DATA");
+    }
+    else
+    {
+        m_parentWindow->errorMessage("Cannot add columns to data2tag tables");
+        return;
+    }
+    for(int i = 0; i < m_parentWindow->m_tagcache->rowCount(); i++)
+    {
+        if( m_parentWindow->m_tagcache->record(i).value("CHILDNODE").toString() == nodeName)
+        {
+            if(m_parentWindow->isLocked(m_parentWindow->m_tagcache->record(i).value("CHILDTAGID").toString()))
+            {
+                m_parentWindow->errorMessage("Cannot add a column to a table associated with a locked tag");
+                return;
+            }
+            else
+            {
+                break;
+            }
+        }
+    }
+
     bool oktext;
     QString text = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("New Column Name"), QLineEdit::Normal, QString(),&oktext);
 
@@ -2109,7 +2192,10 @@ void FaserDbSecondWindow::removeColumn()
 
 void FaserDbSecondWindow::removeRow()
 {
-    m_tableModel->removeRows(m_tableView->selectionModel()->currentIndex().row(), 1);
+    m_sqlTableModel->removeRows(m_tableView->selectionModel()->currentIndex().row(), 1);
+//    m_tableModel->removeRows(m_tableView->selectionModel()->currentIndex().row(), 1);
+//Hide row/reshow if revert later
+//    m_tableView->hideRow(m_tableView->selectionModel()->currentIndex().row());
 }
 
 FaserDbSecondWindow::FaserDbSecondWindow(FaserDbMainWindow *window_parent, QWidget* parent)
@@ -2155,8 +2241,8 @@ void FaserDbSecondWindow::setWindow(QString tableName)
         nameless.remove("_DATA2TAG");
         for(int i = 0; i < m_parentWindow->m_tagcache->rowCount(); i++)
         {
-            if(m_parentWindow->m_tagcache->record(i).value("CHILDNODE").toString() == nameless 
-                && (m_parentWindow->m_rootDisplayTag.isNull() || m_parentWindow->m_tagcache->record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag))
+            if(m_parentWindow->m_tagcache->record(i).value("CHILDNODE").toString() == nameless )
+//                && (m_parentWindow->m_rootDisplayTag.isNull() || m_parentWindow->m_tagcache->record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag))
             {
                 QSqlRecord record = model.record();
                 record.setValue("TAG_ID", m_parentWindow->m_tagcache->record(i).value("CHILDTAGID").toString());
@@ -2229,11 +2315,21 @@ void FaserDbSecondWindow::setWindow(QString tableName)
         QSqlTableModel tagcache(nullptr, m_parentWindow->returnDatabase());
         tagcache.setTable("HVS_TAGCACHE");
         tagcache.select();
+        QString nodeName = m_parentWindow->selectedRowName();
+        if(nodeName.endsWith("_DATA"))
+        {
+            nodeName.remove("_DATA");
+        }
+        else
+        {
+            nodeName.remove("_DATA2TAG");
+        }
+        
         //Need to find the tag for our current table under given root tag
         for(int i = 0; i < tagcache.rowCount(); i++)
         {
             if(tagcache.record(i).value("ROOTTAG").toString() == m_parentWindow->m_rootDisplayTag
-            && tagcache.record(i).value("CHILDNODE").toString() == m_parentWindow->selectedRowName())
+            && tagcache.record(i).value("CHILDNODE").toString() == nodeName)
             {
                 setTagFilter(tagcache.record(i).value("CHILDTAGID").toString());
                 break;
@@ -2279,6 +2375,7 @@ void FaserDbSecondWindow::setTagFilter(QString tagFilter)
     //Case where we are looking at the tag table
     if(currentNode.endsWith("_DATA2TAG"))
     {
+    //Old code for when we didnt use temp tags relational table, automatically filters now for _DATA2TAG tables
         for(int i = 0; i < m_tagTable->rowCount(); i++)
         {
             if(m_tagTable->record(i).value(0).toString() != tagFilter)
@@ -2399,16 +2496,29 @@ Qt::ItemFlags flags;
     QString tagId;
 
     //If tag table
-    if(m_secondWindow->m_tagTable->tableName().endsWith("_DATA2TAG"))
+    if(m_secondWindow->m_sqlTableModel->tableName().endsWith("_DATA2TAG"))
     {
-        tagId = m_secondWindow->m_tagTable->record(row).value(0).toString();
+        tagId = m_secondWindow->m_parentWindow->findAssociated(m_secondWindow->m_parentWindow->m_tag2node, QString("TAG_NAME"), 
+                record(row).value(0).toString(), QString("TAG_ID"));
     }
     else //If data, want associated tag number
     {
         if( !record(row).value(0).toString().isNull())
         {
-            tagId = m_secondWindow->m_parentWindow->findAssociated(m_secondWindow->m_parentWindow->m_tag2node, QString("TAG_NAME"), 
-                record(row).value(0).toString(), QString("TAG_ID"));
+//            tagId = m_secondWindow->m_parentWindow->findAssociated(m_secondWindow->m_parentWindow->m_tagTable, QString("TAG_NAME"), 
+//                record(row).value(0).toString(), QString("TAG_ID"));
+            for(int i = 0; i < m_secondWindow->m_tagTable->rowCount(); i++)
+            {
+                if(m_secondWindow->m_tagTable->record(i).value(1).toString() == record(row).value(0).toString())
+                {
+                    tagId = m_secondWindow->m_tagTable->record(i).value(0).toString();
+                    if(m_secondWindow->m_parentWindow->isLocked(tagId))
+                    {
+                        flags = flags & ~Qt::ItemIsEditable;
+                        return flags;
+                    }
+                }
+            }
         }
     }
 
@@ -2420,7 +2530,7 @@ Qt::ItemFlags flags;
     return flags;
 
 
-}
+}*/
 
 
 

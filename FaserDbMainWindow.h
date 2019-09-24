@@ -8,6 +8,8 @@
 #include <QTableView>
 #include <QtSql>
 #include <QListWidget>
+//#include "FaserDbSecondWindow.h"
+#include "FaserDbRelTableModel.h"
 
 
 // #include <QtGui/QWidget>
@@ -108,6 +110,7 @@ private:
 public:
     FaserDbPopup(FaserDbMainWindow *window_parent, QWidget *parent = nullptr);
 };*/
+
 
 class FaserDbSecondWindow : public QWidget
 {
