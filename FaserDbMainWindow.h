@@ -9,7 +9,7 @@
 #include <QtSql>
 #include <QListWidget>
 //#include "FaserDbSecondWindow.h"
-#include "FaserDbRelTableModel.h"
+//#include "FaserDbRelTableModel.h"
 
 
 // #include <QtGui/QWidget>
@@ -26,11 +26,13 @@ QT_END_NAMESPACE
 
 class FaserDbSecondWindow;
 class FaserDbRelTableModel;
+class FaserGeoEditorApp;
 
 class FaserDbMainWindow : public QMainWindow
 {
     Q_OBJECT
 private:
+    FaserGeoEditorApp *m_editorApp;
     QTreeView *m_treeView;
     QStandardItemModel *m_standardModel;
     QSqlDatabase m_database;
@@ -73,7 +75,7 @@ public:
 
     QString m_rootDisplayTag;
     void initializeWindow();
-    FaserDbMainWindow(QWidget *parent = nullptr);
+    FaserDbMainWindow(QWidget *parent = nullptr, FaserGeoEditorApp *parentApp = nullptr);
     QList<QStandardItem*> prepareRow(  const QString& name1, const QString& name2, const QString& name3, const QString& name4, const QString& name5);
     void buildChildren( QList<QStandardItem*> *Row, QString parent_id);
     void setDatabase( QSqlDatabase *db);

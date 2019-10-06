@@ -9,9 +9,13 @@
 class FaserGeoEditorApp
 {
     public:
-        FaserGeoEditorApp(int& argc, char** argv);
+        FaserGeoEditorApp(int& argc, char** argv, string type);
+
+//        string textToBinary(string fileName);
+//        string binaryToText(string fileName);
 
         int exec();
+        int ExecuteSqlScriptFile(QSqlDatabase & db, const QString & fileName);
         QSqlDatabase& getDatabase() { return m_database; }
     private:
         QApplication m_application;

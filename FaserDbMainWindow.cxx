@@ -17,11 +17,12 @@
 
 using namespace std;
 
-FaserDbMainWindow::FaserDbMainWindow(QWidget* parent)
+FaserDbMainWindow::FaserDbMainWindow(QWidget* parent, FaserGeoEditorApp *parentApp)
     : QMainWindow(parent)
     , m_treeView(new QTreeView(this))
     , m_standardModel(new QStandardItemModel(this))
 {
+    m_editorApp = parentApp;
     showMaximized();
 }
 
@@ -2485,6 +2486,7 @@ QVariant FaserDbRelTableModel::data(const QModelIndex &idx, int role) const
     return var;
 }
 
+//x
 //Following fucntion is reimplementation of flags function
 //Reimplemented to return a non-editable flag for rows where data is locked
 Qt::ItemFlags FaserDbRelTableModel::flags(const QModelIndex &index) const
@@ -2530,7 +2532,7 @@ Qt::ItemFlags flags;
     return flags;
 
 
-}*/
+}
 
 
 
