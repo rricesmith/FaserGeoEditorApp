@@ -14,7 +14,10 @@ cd ../run
 
 source ./setup.sh
 
-bin/qtTest data/geomDB_sqlite
+bin/qtTest data/geomDB_sqlite b
+
+Use b as third input when using binary sqlite files
+Use t as third input when using text file of sql commands
 
 Adding rows/columns adds one after the selected index (if none selected inputs new one at beginning)
 
