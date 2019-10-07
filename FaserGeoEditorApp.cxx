@@ -32,7 +32,8 @@ FaserGeoEditorApp::FaserGeoEditorApp(int& argc, char** argv, string type)
     }
     else
     {
-        m_database.setDatabaseName(":memory");
+        cout<<"Binary file will initially be saved to current directory as GeoEditorSqlite\n";
+        m_database.setDatabaseName("GeoEditorSqlite");
         ok = m_database.open();
     
         if(ExecuteSqlScriptFile( m_database, dbName) == 0)

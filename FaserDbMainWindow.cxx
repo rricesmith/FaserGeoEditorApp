@@ -14,6 +14,7 @@
 #include <QSqlField>
 #include <vector>
 #include <QtGui>
+#include <QTextStream>
 
 using namespace std;
 
@@ -373,6 +374,10 @@ void FaserDbMainWindow::createActions()
 
     fileMenu->addSeparator();
 
+    QAction *saveAct = fileMenu->addAction(tr("&Save as text commands"), this, &FaserDbMainWindow::saveFile);
+    saveAct->setShortcuts(QKeySequence::Save);
+    saveAct->setStatusTip(tr("Saves application as a text file containing sql commands to rebuild database"));
+
     QAction *rebuildAct = fileMenu->addAction(tr("&ReBuild"), this, &FaserDbMainWindow::rebuildTree);
     rebuildAct->setStatusTip(tr("Rebuild tree based off of changes"));
 
@@ -387,6 +392,95 @@ void FaserDbMainWindow::createActions()
     quitAct->setStatusTip(tr("Quit the application"));
 
 
+}
+
+void FaserDbMainWindow::saveFile()
+{
+    bool ok;
+    QString fileName = QInputDialog::getText(this, tr("QInputDialog::getText()"), tr("File name to save to\n(including path if desired)"), QLineEdit::Normal, QString(), &ok);
+    if( !ok )
+    {
+        cout<<"Failed to get file name to save to\n";
+        return;
+    }
+    QFile data(fileName);
+    if (data.open(QFile::WriteOnly)) 
+    {
+        QTextStream outTxt(&data);
+        outTxt << "BEGIN TRANSACTION;\n\n";
+        QSqlQuery query(m_database);
+        query.prepare("SELECT * FROM sqlite_master"); //Get names of tables in database
+        if(query.exec())
+        {
+            while (query.next())
+            {
+                outTxt << "\n";
+                //Gets name of table to do new query of it
+                QString queryText = QString("SELECT * FROM %1").arg(query.record().value(1).toString());
+                QSqlQuery subQuery(m_database);
+                subQuery.prepare(queryText);
+                bool firstLine=true;
+                if(subQuery.exec())
+                {
+                    outTxt << "DROP TABLE IF EXISTS \""<<query.record().value(1).toString()<<"\";\nCREATE TABLE IF NOT EXISTS \""<<query.record().value(1).toString()<<"\" (\n";
+                    while( subQuery.next())
+                    {
+                        const QSqlRecord recrd= subQuery.record();
+                        //Creates table query
+                        if(firstLine)
+                        {
+                            QSqlQuery typeQuery(m_database);
+                            QString typeString = QString("PRAGMA table_info(%1)").arg(query.record().value(1).toString());
+                            typeQuery.prepare(typeString);
+                            typeQuery.exec();
+                            bool prevAdded = false;
+                            while( typeQuery.next())
+                            {
+                                if(prevAdded)
+                                {
+                                    outTxt << ",\n";
+                                }
+                                prevAdded = true;
+                                QString name = typeQuery.value("name").toString();
+                                QString type = typeQuery.value("type").toString();
+                                outTxt << "\t";
+                                outTxt << "\""<< name <<"\"\t"<< type; //Headers
+                            }
+                            outTxt << "\n);\n\n";
+                        }
+                        firstLine=false;
+                        outTxt << "INSERT INTO \"" << query.record().value(1).toString()<< "\" VALUES (";
+                        for(int i=0;i<recrd.count();++i)
+                        {
+                            if( i != 0)
+                            {
+                                outTxt << ", ";
+                            }
+                            if(recrd.value(i).isNull())
+                            {
+                                outTxt << "NULL";
+                            }
+                            else
+                            {
+                                if(recrd.value(i).userType() == QMetaType::QString )
+                                {
+                                    outTxt << "'";
+                                }
+                                outTxt << recrd.value(i).toString();
+                                if(recrd.value(i).userType() == QMetaType::QString )
+                                {
+                                    outTxt << "'";
+                                }
+                            }   
+                        }
+                        outTxt << ");\n";
+                    }
+                }
+            }
+        outTxt << "COMMIT;";
+        }
+	data.close();
+} 
 }
 
 QString FaserDbMainWindow::selectedRowName()
@@ -2345,10 +2439,7 @@ void FaserDbSecondWindow::clearWindow()
     {
         QSqlQuery query;
         query.prepare("DROP TABLE IF EXISTS temp_tags");
-        if(!query.exec())
-        {
-            cout<<"failed clear window drop table\n";
-        }
+        query.exec();
         delete layout();
         delete m_submitButton;
         delete m_revertButton;

@@ -82,6 +82,7 @@ public:
 //    void submit();
     QSqlDatabase returnDatabase();
     void rebuildTree();
+    void saveFile();
     void buildListWidget();
     bool verifyDatabase();
     QString selectedRowName();
